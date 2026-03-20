@@ -152,9 +152,10 @@ export async function getExecutionEvents(
   id: string,
   params?: { since?: string; limit?: number },
 ): Promise<ExecutionEvent[]> {
-  return request<ExecutionEvent[]>(
+  const resp = await request<{ events?: ExecutionEvent[] }>(
     `/api/v1/executions/${encodeURIComponent(id)}/events${qs(params ?? {})}`,
   );
+  return resp.events ?? [];
 }
 
 export async function getServiceMetrics(
