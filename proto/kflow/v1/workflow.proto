@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package kflow.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/pastorenue/kflow/internal/gen/kflow/v1;kflowv1";
+
+service WorkflowService {
+  rpc RegisterWorkflow(RegisterWorkflowRequest) returns (RegisterWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows"
+      body: "*"
+    };
+  }
+  rpc GetWorkflow(GetWorkflowRequest) returns (GetWorkflowResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/workflows/{name}"
+    };
+  }
+  rpc ListWorkflows(ListWorkflowsRequest) returns (ListWorkflowsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/workflows"
+    };
+  }
+  rpc RunWorkflow(RunWorkflowRequest) returns (RunWorkflowResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/workflows/{name}/run"
+      body: "*"
+    };
+  }
+}
+
+message WorkflowGraph {
+  string name = 1;
+  repeated WorkflowState states = 2;
+  repeated WorkflowStep steps = 3;
+}
+
+message WorkflowState {
+  string name = 1;
+  string kind = 2;
+  string service_target = 3;
+  int64 wait_seconds = 4;
+  string catch_state = 5;
+}
+
+message WorkflowStep {
+  string name = 1;
+  string next = 2;
+  string catch = 3;
+  bool is_end = 4;
+}
+
+message RegisterWorkflowRequest {
+  WorkflowGraph graph = 1;
+}
+
+message RegisterWorkflowResponse {
+  string workflow_name = 1;
+}
+
+message GetWorkflowRequest {
+  string name = 1;
+}
+
+message GetWorkflowResponse {
+  WorkflowGraph graph = 1;
+}
+
+message ListWorkflowsRequest {}
+
+message ListWorkflowsResponse {
+  repeated WorkflowGraph workflows = 1;
+}
+
+message RunWorkflowRequest {
+  string name = 1;
+  google.protobuf.Struct input = 2;
+}
+
+message RunWorkflowResponse {
+  string execution_id = 1;
+}

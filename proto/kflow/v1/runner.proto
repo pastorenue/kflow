@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package kflow.v1;
+
+import "google/protobuf/struct.proto";
+
+option go_package = "github.com/pastorenue/kflow/internal/gen/kflow/v1;kflowv1";
+
+// RunnerService is the internal gRPC service used by K8s Job containers
+// to retrieve their input and report results back to the Control Plane.
+// Exposed on :9090 (internal only, not accessible outside the cluster).
+service RunnerService {
+  rpc GetInput(GetInputRequest) returns (GetInputResponse);
+  rpc CompleteState(CompleteStateRequest) returns (CompleteStateResponse);
+  rpc FailState(FailStateRequest) returns (FailStateResponse);
+}
+
+// ServiceRunnerService is implemented by Deployment-mode Service pods.
+// The Control Plane dials the pod's ClusterIP to invoke it.
+service ServiceRunnerService {
+  rpc Invoke(InvokeRequest) returns (InvokeResponse);
+}
+
+message GetInputRequest {
+  string token = 1;
+}
+
+message GetInputResponse {
+  google.protobuf.Struct payload = 1;
+}
+
+message CompleteStateRequest {
+  string token = 1;
+  google.protobuf.Struct output = 2;
+}
+
+message CompleteStateResponse {}
+
+message FailStateRequest {
+  string token = 1;
+  string error_message = 2;
+}
+
+message FailStateResponse {}
+
+message InvokeRequest {
+  google.protobuf.Struct payload = 1;
+}
+
+message InvokeResponse {
+  google.protobuf.Struct result = 1;
+}

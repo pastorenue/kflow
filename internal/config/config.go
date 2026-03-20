@@ -9,48 +9,26 @@ import (
 
 // Config holds all runtime configuration loaded from environment variables.
 type Config struct {
-	// MongoURI is the MongoDB connection URI. Required.
-	// Source: KFLOW_MONGO_URI
-	MongoURI string
-
-	// MongoDB is the database name. Defaults to "kflow".
-	// Source: KFLOW_MONGO_DB
-	MongoDB string
-
-	// Namespace is the Kubernetes namespace used for all workloads.
-	// Defaults to "kflow".
-	// Source: KFLOW_NAMESPACE
+	MongoURI  string
+	MongoDB   string
 	Namespace string
 
-	// RunnerGRPCEndpoint is the internal address of the RunnerService.
-	// Injected into K8s Job containers as KFLOW_GRPC_ENDPOINT.
-	// Defaults to "kflow-cp.kflow.svc.cluster.local:9090".
-	// Source: KFLOW_RUNNER_GRPC_ENDPOINT
-	RunnerGRPCEndpoint string
+	GRPCPort       string // KFLOW_GRPC_PORT, default "8080"
+	RunnerGRPCPort string // KFLOW_RUNNER_GRPC_PORT, default "9090"
+	GRPCTLSCert    string // KFLOW_GRPC_TLS_CERT
+	GRPCTLSKey     string // KFLOW_GRPC_TLS_KEY
 
-	// RunnerTokenSecret is the HMAC-SHA256 key used to sign state tokens.
-	// Required in production. Min 32 bytes.
-	// Source: KFLOW_RUNNER_TOKEN_SECRET
-	RunnerTokenSecret string
+	RunnerGRPCEndpoint string // KFLOW_RUNNER_GRPC_ENDPOINT
+	RunnerTokenSecret  []byte // KFLOW_RUNNER_TOKEN_SECRET
 
-	// APIKey is the Bearer token for API authentication.
-	// Empty means auth is disabled (dev mode only).
-	// Source: KFLOW_API_KEY
-	APIKey string
+	ServiceGRPCPort string // KFLOW_SERVICE_GRPC_PORT, default "9091"
 
-	// ClickHouseDSN is the ClickHouse connection string.
-	// If empty, telemetry is disabled (no-op mode).
-	// Source: KFLOW_CLICKHOUSE_DSN
+	APIKey        string
 	ClickHouseDSN string
-
-	// ObjectStoreURI is the S3-compatible URI for large output offload.
-	// If empty, outputs > 1 MB return ErrOutputTooLarge.
-	// Source: KFLOW_OBJECT_STORE_URI
-	ObjectStoreURI string
+	Image         string // KFLOW_IMAGE: container image for K8s Job execution (optional)
 }
 
 // LoadConfig reads configuration from environment variables.
-// Returns an error if any required variable is missing.
 func LoadConfig() (*Config, error) {
 	mongoURI := os.Getenv("KFLOW_MONGO_URI")
 	if mongoURI == "" {
@@ -67,14 +45,32 @@ func LoadConfig() (*Config, error) {
 		namespace = "kflow"
 	}
 
+	grpcPort := os.Getenv("KFLOW_GRPC_PORT")
+	if grpcPort == "" {
+		grpcPort = "8080"
+	}
+
+	runnerGRPCPort := os.Getenv("KFLOW_RUNNER_GRPC_PORT")
+	if runnerGRPCPort == "" {
+		runnerGRPCPort = "9090"
+	}
+
+	serviceGRPCPort := os.Getenv("KFLOW_SERVICE_GRPC_PORT")
+	if serviceGRPCPort == "" {
+		serviceGRPCPort = "9091"
+	}
+
 	runnerEndpoint := os.Getenv("KFLOW_RUNNER_GRPC_ENDPOINT")
 	if runnerEndpoint == "" {
 		runnerEndpoint = "kflow-cp.kflow.svc.cluster.local:9090"
 	}
 
-	tokenSecret := os.Getenv("KFLOW_RUNNER_TOKEN_SECRET")
-	if len(tokenSecret) < 32 {
-		log.Println("config: WARNING KFLOW_RUNNER_TOKEN_SECRET is unset or too short — state token security is disabled (dev mode only)")
+	tokenSecretStr := os.Getenv("KFLOW_RUNNER_TOKEN_SECRET")
+	tokenSecret := []byte(tokenSecretStr)
+	if len(tokenSecret) == 0 {
+		log.Println("config: WARNING KFLOW_RUNNER_TOKEN_SECRET is not set — state token security is disabled (dev mode only)")
+	} else if len(tokenSecret) < 32 {
+		return nil, fmt.Errorf("config: KFLOW_RUNNER_TOKEN_SECRET must be at least 32 bytes, got %d", len(tokenSecret))
 	}
 
 	apiKey := os.Getenv("KFLOW_API_KEY")
@@ -86,18 +82,20 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	clickhouseDSN := os.Getenv("KFLOW_CLICKHOUSE_DSN")
-	objectStoreURI := os.Getenv("KFLOW_OBJECT_STORE_URI")
-
 	return &Config{
 		MongoURI:           mongoURI,
 		MongoDB:            mongoDB,
 		Namespace:          namespace,
+		GRPCPort:           grpcPort,
+		RunnerGRPCPort:     runnerGRPCPort,
+		GRPCTLSCert:        os.Getenv("KFLOW_GRPC_TLS_CERT"),
+		GRPCTLSKey:         os.Getenv("KFLOW_GRPC_TLS_KEY"),
 		RunnerGRPCEndpoint: runnerEndpoint,
 		RunnerTokenSecret:  tokenSecret,
+		ServiceGRPCPort:    serviceGRPCPort,
 		APIKey:             apiKey,
-		ClickHouseDSN:      clickhouseDSN,
-		ObjectStoreURI:     objectStoreURI,
+		ClickHouseDSN:      os.Getenv("KFLOW_CLICKHOUSE_DSN"),
+		Image:              os.Getenv("KFLOW_IMAGE"),
 	}, nil
 }
 

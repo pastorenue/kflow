@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package kflow.v1;
+
+import "google/api/annotations.proto";
+import "kflow/v1/types.proto";
+
+option go_package = "github.com/pastorenue/kflow/internal/gen/kflow/v1;kflowv1";
+
+service ExecutionService {
+  rpc ListExecutions(ListExecutionsRequest) returns (ListExecutionsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/executions"
+    };
+  }
+  rpc GetExecution(GetExecutionRequest) returns (GetExecutionResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/executions/{id}"
+    };
+  }
+  rpc ListExecutionStates(ListExecutionStatesRequest) returns (ListExecutionStatesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/executions/{execution_id}/states"
+    };
+  }
+}
+
+message ListExecutionsRequest {
+  string workflow = 1;
+  string status = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListExecutionsResponse {
+  repeated ExecutionRecord executions = 1;
+}
+
+message GetExecutionRequest {
+  string id = 1;
+}
+
+message GetExecutionResponse {
+  ExecutionRecord execution = 1;
+}
+
+message ListExecutionStatesRequest {
+  string execution_id = 1;
+}
+
+message ListExecutionStatesResponse {
+  repeated StateRecord states = 1;
+}

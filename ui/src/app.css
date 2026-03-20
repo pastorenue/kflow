@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans:    'Figtree', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Syne', ui-sans-serif, system-ui, sans-serif;
+
+  /* background layers */
+  --color-base:    #f5f4f0;
+  --color-surface: #ffffff;
+  --color-raised:  #eceae2;
+  --color-border:  #dedad0;
+
+  /* text */
+  --color-text:    #1a1916;
+  --color-muted:   #6d6b62;
+  --color-subtle:  #b2afa6;
+
+  /* accent */
+  --color-accent:     #0f766e;
+  --color-accent-dim: #0d6b63;
+
+  /* status */
+  --color-pending:   #d4d2cb;
+  --color-running:   #1d4ed8;
+  --color-completed: #15803d;
+  --color-failed:    #b91c1c;
+  --color-stopped:   #d4d2cb;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@layer base {
+  html, body { @apply bg-base text-text font-sans antialiased; }
+  * { box-sizing: border-box; }
+
+  main > div { animation: page-enter 0.18s ease-out; }
+
+  table  { @apply w-full text-sm border-collapse; }
+  th     { @apply text-left px-4 py-3 text-muted font-medium border-b border-border text-xs tracking-wide uppercase; }
+  td     { @apply px-4 py-3 border-b border-border/60; }
+  tr:hover td { @apply bg-raised cursor-pointer; }
+  h1     { @apply text-xl font-semibold text-text mt-0 mb-6 tracking-tight; }
+  input, select { @apply bg-surface border border-border rounded px-3 py-1.5 text-sm text-text outline-none focus:ring-1 focus:ring-accent; }
+  button { @apply bg-surface border border-border rounded px-4 py-1.5 text-sm text-text cursor-pointer hover:bg-raised transition-colors; }
+  pre    { @apply bg-raised border border-border rounded p-3 text-xs overflow-x-auto text-text font-mono; }
+  code   { @apply font-mono text-accent text-[0.8em]; }
+}
+
+@layer components {
+  .badge { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold tracking-wide; }
+  .badge-pending   { @apply bg-stone-100 text-stone-500; }
+  .badge-running   { @apply bg-blue-50 text-blue-700 ring-1 ring-blue-200; }
+  .badge-completed { @apply bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200; }
+  .badge-failed    { @apply bg-red-50 text-red-700 ring-1 ring-red-200; }
+  .badge-stopped   { @apply bg-stone-100 text-stone-500; }
+  .badge-info      { @apply bg-blue-50 text-blue-700 ring-1 ring-blue-200; }
+  .badge-warn      { @apply bg-amber-50 text-amber-700 ring-1 ring-amber-200; }
+  .badge-error     { @apply bg-red-50 text-red-700 ring-1 ring-red-200; }
+  .badge-debug     { @apply bg-stone-100 text-stone-500; }
+
+  .filters { @apply flex flex-wrap gap-3 mb-5 items-center; }
+  .empty   { @apply text-center text-muted py-16 text-sm; }
+}

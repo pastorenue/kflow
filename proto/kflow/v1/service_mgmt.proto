@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package kflow.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "kflow/v1/types.proto";
+
+option go_package = "github.com/pastorenue/kflow/internal/gen/kflow/v1;kflowv1";
+
+service ServiceManagementService {
+  rpc RegisterService(RegisterServiceRequest) returns (RegisterServiceResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/services"
+      body: "*"
+    };
+  }
+  rpc GetService(GetServiceRequest) returns (GetServiceResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/services/{name}"
+    };
+  }
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/services"
+    };
+  }
+  rpc DeleteService(DeleteServiceRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      delete: "/api/v1/services/{name}"
+    };
+  }
+}
+
+message RegisterServiceRequest {
+  string name = 1;
+  string mode = 2;
+  int32 port = 3;
+  int32 min_scale = 4;
+  int32 max_scale = 5;
+  string ingress_host = 6;
+  int64 timeout_seconds = 7;
+  string image = 8;
+}
+
+message RegisterServiceResponse {
+  string service_name = 1;
+}
+
+message GetServiceRequest {
+  string name = 1;
+}
+
+message GetServiceResponse {
+  ServiceRecord service = 1;
+}
+
+message ListServicesRequest {}
+
+message ListServicesResponse {
+  repeated ServiceRecord services = 1;
+}
+
+message DeleteServiceRequest {
+  string name = 1;
+}
