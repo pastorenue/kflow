@@ -45,58 +45,68 @@ func runClient() {
 
 	fmt.Printf("=== 05-control-plane: %s ===\n", workflowName)
 
-	// 1. Register the workflow graph.
-	graph := map[string]any{
-		"name": workflowName,
-		"states": []map[string]any{
-			{"name": "ValidateOrder", "type": "task"},
-			{"name": "CalculateTax", "type": "task"},
-			{"name": "ChargePayment", "type": "task"},
-		},
-		"flow": []map[string]any{
-			{"name": "ValidateOrder", "next": "CalculateTax"},
-			{"name": "CalculateTax", "next": "ChargePayment"},
-			{"name": "ChargePayment", "is_end": true},
+	// 1. Register the workflow graph (proto JSON: {"graph": {...}}).
+	regBody := map[string]any{
+		"graph": map[string]any{
+			"name": workflowName,
+			"states": []map[string]any{
+				{"name": "ValidateOrder", "kind": "task"},
+				{"name": "CalculateTax", "kind": "task"},
+				{"name": "ChargePayment", "kind": "task"},
+			},
+			"steps": []map[string]any{
+				{"name": "ValidateOrder", "next": "CalculateTax"},
+				{"name": "CalculateTax", "next": "ChargePayment"},
+				{"name": "ChargePayment", "isEnd": true},
+			},
 		},
 	}
 	var regResp map[string]string
-	if err := apiCall("POST", endpoint+"/api/v1/workflows", graph, &regResp); err != nil {
+	if err := apiCall("POST", endpoint+"/api/v1/workflows", regBody, &regResp); err != nil {
 		log.Fatalf("register workflow: %v", err)
 	}
-	fmt.Printf("  registered workflow %q\n", regResp["name"])
+	fmt.Printf("  registered workflow %q\n", regResp["workflowName"])
 
-	// 2. Trigger a run.
-	input := map[string]any{
-		"order_id": "ORD-9001",
-		"customer": "bob",
-		"total":    299.99,
+	// 2. Trigger a run (name is path param; body carries input as Struct).
+	runBody := map[string]any{
+		"input": map[string]any{
+			"order_id": "ORD-9001",
+			"customer": "bob",
+			"total":    299.99,
+		},
 	}
 	var runResp map[string]string
-	if err := apiCall("POST", endpoint+"/api/v1/workflows/"+workflowName+"/run", input, &runResp); err != nil {
+	if err := apiCall("POST", endpoint+"/api/v1/workflows/"+workflowName+"/run", runBody, &runResp); err != nil {
 		log.Fatalf("run workflow: %v", err)
 	}
-	execID := runResp["execution_id"]
+	execID := runResp["executionId"]
 	fmt.Printf("  triggered execution %s\n", execID)
 
-	// 3. Poll until completed or failed.
+	// 3. Poll until completed or failed (grpc-gateway wraps record in "execution").
 	fmt.Println("  polling for completion...")
 	start := time.Now()
 	deadline := time.Now().Add(30 * time.Second)
+	var finalStatus string
 	for time.Now().Before(deadline) {
-		var exec map[string]any
-		if err := apiCall("GET", endpoint+"/api/v1/executions/"+execID, nil, &exec); err != nil {
+		var resp map[string]any
+		if err := apiCall("GET", endpoint+"/api/v1/executions/"+execID, nil, &resp); err != nil {
 			log.Fatalf("get execution: %v", err)
 		}
-		status, _ := exec["Status"].(string)
-		if status == "Completed" || status == "Failed" {
+		exec, _ := resp["execution"].(map[string]any)
+		status, _ := exec["status"].(string)
+		if status == "STATUS_COMPLETED" || status == "STATUS_FAILED" {
+			finalStatus = status
 			elapsed := time.Since(start).Round(time.Millisecond)
 			fmt.Printf("  execution %s in %s\n", status, elapsed)
 			break
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+	if finalStatus == "" {
+		log.Fatal("timed out waiting for execution to complete")
+	}
 
-	// 4. Fetch and print per-state results.
+	// 4. Fetch and print per-state results (states at "states[].stateName / .status").
 	var statesResp map[string]any
 	if err := apiCall("GET", endpoint+"/api/v1/executions/"+execID+"/states", nil, &statesResp); err != nil {
 		log.Fatalf("list states: %v", err)
@@ -105,7 +115,7 @@ func runClient() {
 	states, _ := statesResp["states"].([]any)
 	for _, s := range states {
 		rec, _ := s.(map[string]any)
-		fmt.Printf("    %-20s %s\n", rec["StateName"], rec["Status"])
+		fmt.Printf("    %-20s %s\n", rec["stateName"], rec["status"])
 	}
 
 	fmt.Println("\nNOTE: running without K8s — orchestrator used its in-process pass-through handler.")
