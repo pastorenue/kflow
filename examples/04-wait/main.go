@@ -16,16 +16,16 @@ func main() {
 	h := handlers.New()
 
 	wf := kflow.New("scheduled-notification")
-	wf.Task("ScheduleNotification", h.ScheduleNotification)
-	wf.Wait("WaitForSendTime", 2*time.Second)
-	wf.Task("SendNotification", h.SendNotification)
-	wf.Task("LogDelivery", h.LogDelivery)
+	wf.Task(handlers.StateScheduleNotification, h.ScheduleNotification)
+	wf.Wait(handlers.StateWaitForSendTime, 2*time.Second)
+	wf.Task(handlers.StateSendNotification, h.SendNotification)
+	wf.Task(handlers.StateLogDelivery, h.LogDelivery)
 
 	wf.Flow(
-		kflow.Step("ScheduleNotification").Next("WaitForSendTime"),
-		kflow.Step("WaitForSendTime").Next("SendNotification"),
-		kflow.Step("SendNotification").Next("LogDelivery"),
-		kflow.Step("LogDelivery").End(),
+		kflow.Step(handlers.StateScheduleNotification).Next(handlers.StateWaitForSendTime),
+		kflow.Step(handlers.StateWaitForSendTime).Next(handlers.StateSendNotification),
+		kflow.Step(handlers.StateSendNotification).Next(handlers.StateLogDelivery),
+		kflow.Step(handlers.StateLogDelivery).End(),
 	)
 
 	fmt.Println("=== 04-wait: scheduled-notification (2s pause) ===")

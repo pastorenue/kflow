@@ -7,6 +7,13 @@ import (
 	"github.com/pastorenue/kflow/pkg/kflow"
 )
 
+const (
+	StateAssessRisk    = "AssessRisk"
+	StateRouteDecision = "RouteDecision"
+	StateApproveLoan   = "ApproveLoan"
+	StateRejectLoan    = "RejectLoan"
+)
+
 type LoanHandlers struct{}
 
 func New() *LoanHandlers { return &LoanHandlers{} }
@@ -25,9 +32,9 @@ func (h *LoanHandlers) AssessRisk(_ context.Context, input kflow.Input) (kflow.O
 func (h *LoanHandlers) RouteDecision(_ context.Context, input kflow.Input) (string, error) {
 	score, _ := input["credit_score"].(float64)
 	if score >= 700 {
-		return "ApproveLoan", nil
+		return StateApproveLoan, nil
 	}
-	return "RejectLoan", nil
+	return StateRejectLoan, nil
 }
 
 func (h *LoanHandlers) ApproveLoan(_ context.Context, input kflow.Input) (kflow.Output, error) {

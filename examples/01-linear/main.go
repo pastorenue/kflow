@@ -15,16 +15,16 @@ func main() {
 	h := handlers.New()
 
 	wf := kflow.New("order-processing")
-	wf.Task("ValidateOrder", h.ValidateOrder)
-	wf.Task("CalculateTax", h.CalculateTax)
-	wf.Task("ChargePayment", h.ChargePayment)
-	wf.Task("SendConfirmation", h.SendConfirmation)
+	wf.Task(handlers.StateValidateOrder, h.ValidateOrder)
+	wf.Task(handlers.StateCalculateTax, h.CalculateTax)
+	wf.Task(handlers.StateChargePayment, h.ChargePayment)
+	wf.Task(handlers.StateSendConfirmation, h.SendConfirmation)
 
 	wf.Flow(
-		kflow.Step("ValidateOrder").Next("CalculateTax"),
-		kflow.Step("CalculateTax").Next("ChargePayment"),
-		kflow.Step("ChargePayment").Next("SendConfirmation"),
-		kflow.Step("SendConfirmation").End(),
+		kflow.Step(handlers.StateValidateOrder).Next(handlers.StateCalculateTax),
+		kflow.Step(handlers.StateCalculateTax).Next(handlers.StateChargePayment),
+		kflow.Step(handlers.StateChargePayment).Next(handlers.StateSendConfirmation),
+		kflow.Step(handlers.StateSendConfirmation).End(),
 	)
 
 	fmt.Println("=== 01-linear: order-processing ===")

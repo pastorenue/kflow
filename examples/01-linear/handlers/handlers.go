@@ -7,6 +7,13 @@ import (
 	"github.com/pastorenue/kflow/pkg/kflow"
 )
 
+const (
+	StateValidateOrder    = "ValidateOrder"
+	StateCalculateTax     = "CalculateTax"
+	StateChargePayment    = "ChargePayment"
+	StateSendConfirmation = "SendConfirmation"
+)
+
 type OrderHandlers struct{}
 
 func New() *OrderHandlers { return &OrderHandlers{} }

@@ -7,6 +7,13 @@ import (
 	"github.com/pastorenue/kflow/pkg/kflow"
 )
 
+const (
+	StateFetchExternalData = "FetchExternalData"
+	StateEnrichRecord      = "EnrichRecord"
+	StatePersist           = "Persist"
+	StateHandleFetchError  = "HandleFetchError"
+)
+
 // PipelineHandlers simulates a flaky external service.
 // succeedAfter == 0 means always fail (triggers catch after retries exhausted).
 type PipelineHandlers struct {

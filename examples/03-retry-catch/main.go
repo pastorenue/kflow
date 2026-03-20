@@ -18,19 +18,19 @@ import (
 func buildWorkflow(h *handlers.PipelineHandlers) *kflow.Workflow {
 	wf := kflow.New("data-pipeline")
 
-	wf.Task("FetchExternalData", h.FetchExternalData).
+	wf.Task(handlers.StateFetchExternalData, h.FetchExternalData).
 		Retry(kflow.RetryPolicy{MaxAttempts: 3, BackoffSeconds: 0}).
-		Catch("HandleFetchError")
+		Catch(handlers.StateHandleFetchError)
 
-	wf.Task("EnrichRecord", h.EnrichRecord)
-	wf.Task("Persist", h.Persist)
-	wf.Task("HandleFetchError", h.HandleFetchError)
+	wf.Task(handlers.StateEnrichRecord, h.EnrichRecord)
+	wf.Task(handlers.StatePersist, h.Persist)
+	wf.Task(handlers.StateHandleFetchError, h.HandleFetchError)
 
 	wf.Flow(
-		kflow.Step("FetchExternalData").Next("EnrichRecord").Catch("HandleFetchError"),
-		kflow.Step("EnrichRecord").Next("Persist"),
-		kflow.Step("Persist").End(),
-		kflow.Step("HandleFetchError").End(),
+		kflow.Step(handlers.StateFetchExternalData).Next(handlers.StateEnrichRecord).Catch(handlers.StateHandleFetchError),
+		kflow.Step(handlers.StateEnrichRecord).Next(handlers.StatePersist),
+		kflow.Step(handlers.StatePersist).End(),
+		kflow.Step(handlers.StateHandleFetchError).End(),
 	)
 	return wf
 }

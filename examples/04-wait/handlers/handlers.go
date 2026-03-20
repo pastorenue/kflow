@@ -8,6 +8,13 @@ import (
 	"github.com/pastorenue/kflow/pkg/kflow"
 )
 
+const (
+	StateScheduleNotification = "ScheduleNotification"
+	StateWaitForSendTime      = "WaitForSendTime"
+	StateSendNotification     = "SendNotification"
+	StateLogDelivery          = "LogDelivery"
+)
+
 type NotificationHandlers struct{}
 
 func New() *NotificationHandlers { return &NotificationHandlers{} }

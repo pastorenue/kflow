@@ -65,6 +65,25 @@ handlers.New(succeedAfter int) *PipelineHandlers
 - Handler methods print a one-line summary per state so output is readable without a debugger.
 - No external services required (MemoryStore, in-process execution).
 
+## State name constants
+
+Every `handlers/` package exports a `const` block. `main.go` (and any test file)
+references state names only through these constants — never as bare strings.
+
+Naming convention: `State<StateName> = "<StateName>"`
+
+Examples:
+```go
+handlers.StateValidateOrder   // "ValidateOrder"
+handlers.StateRouteDecision   // "RouteDecision"
+```
+
+`ChoiceFunc` methods that return routing targets also use the constants
+(no package prefix needed since they are in the same package):
+```go
+return StateApproveLoan, nil  // instead of "ApproveLoan"
+```
+
 ## Engine fix: Choice state pass-through
 
 Choice states must preserve the full input context for downstream states. The `local/runner.go` handler merges the routing key into a copy of the input rather than replacing it:

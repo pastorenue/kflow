@@ -13,16 +13,16 @@ import (
 
 func buildWorkflow(h *handlers.LoanHandlers) *kflow.Workflow {
 	wf := kflow.New("loan-approval")
-	wf.Task("AssessRisk", h.AssessRisk)
-	wf.Choice("RouteDecision", h.RouteDecision)
-	wf.Task("ApproveLoan", h.ApproveLoan)
-	wf.Task("RejectLoan", h.RejectLoan)
+	wf.Task(handlers.StateAssessRisk, h.AssessRisk)
+	wf.Choice(handlers.StateRouteDecision, h.RouteDecision)
+	wf.Task(handlers.StateApproveLoan, h.ApproveLoan)
+	wf.Task(handlers.StateRejectLoan, h.RejectLoan)
 
 	wf.Flow(
-		kflow.Step("AssessRisk").Next("RouteDecision"),
-		kflow.Step("RouteDecision").Next("ApproveLoan"),
-		kflow.Step("ApproveLoan").End(),
-		kflow.Step("RejectLoan").End(),
+		kflow.Step(handlers.StateAssessRisk).Next(handlers.StateRouteDecision),
+		kflow.Step(handlers.StateRouteDecision).Next(handlers.StateApproveLoan),
+		kflow.Step(handlers.StateApproveLoan).End(),
+		kflow.Step(handlers.StateRejectLoan).End(),
 	)
 	return wf
 }
