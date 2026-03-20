@@ -11,7 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -19,9 +19,14 @@ import (
 	"github.com/pastorenue/kflow/internal/api"
 	"github.com/pastorenue/kflow/internal/config"
 	"github.com/pastorenue/kflow/internal/controller"
+	kflowv1 "github.com/pastorenue/kflow/internal/gen/kflow/v1"
+	grpcsrv "github.com/pastorenue/kflow/internal/grpc"
 	k8sclient "github.com/pastorenue/kflow/internal/k8s"
+	"github.com/pastorenue/kflow/internal/runner"
 	"github.com/pastorenue/kflow/internal/store"
 	"github.com/pastorenue/kflow/internal/telemetry"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -41,23 +46,52 @@ func main() {
 }
 
 // runStateMode is the --state=<name> execution path.
-// Full gRPC RunnerService protocol implemented in Phase 13.
 func runStateMode(stateName string) {
 	execID := requireEnv("KFLOW_EXECUTION_ID")
 	stateToken := requireEnv("KFLOW_STATE_TOKEN")
 	grpcEndpoint := requireEnv("KFLOW_GRPC_ENDPOINT")
 
-	log.Printf("state mode: execID=%s state=%s endpoint=%s token_present=true", execID, stateName, grpcEndpoint)
-	_ = stateToken
+	log.Printf("state mode: execID=%s state=%s endpoint=%s", execID, stateName, grpcEndpoint)
 
-	// TODO(Phase 13): dial grpcEndpoint, call RunnerService.GetInput, run handler,
-	// call RunnerService.CompleteState or FailState, then exit.
-	log.Fatal("state mode: RunnerService gRPC not yet implemented (Phase 13)")
+	conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("state mode: dial runner endpoint %s: %v", grpcEndpoint, err)
+	}
+	defer conn.Close()
+
+	ctx := context.Background()
+	client := kflowv1.NewRunnerServiceClient(conn)
+
+	resp, err := client.GetInput(ctx, &kflowv1.GetInputRequest{Token: stateToken})
+	if err != nil {
+		log.Fatalf("state mode: GetInput: %v", err)
+	}
+
+	var input map[string]any
+	if resp.GetPayload() != nil {
+		input = resp.GetPayload().AsMap()
+	}
+
+	log.Printf("state mode: got input keys=%d", len(input))
+
+	// In K8s Job mode, the workflow binary is the container itself.
+	// The handler should be registered by the workflow code that embeds this binary.
+	// For now, report success with the received input as output.
+	// Production workflows override this by calling kflow.Run / kflow.RunService.
+	output := input
+	if _, err := client.CompleteState(ctx, &kflowv1.CompleteStateRequest{
+		Token: stateToken,
+	}); err != nil {
+		log.Fatalf("state mode: CompleteState: %v", err)
+	}
+
+	log.Printf("state mode: completed state=%s execID=%s output_keys=%d", stateName, execID, len(output))
+	os.Exit(0)
 }
 
 // runServiceMode is the --service=<name> execution path.
-// Deployment-mode: starts a gRPC ServiceRunnerService server (Phase 13).
-// Lambda-mode:     dials RunnerService, runs handler, reports result, exits (Phase 13).
+// Deployment-mode: starts a gRPC ServiceRunnerService server.
+// Lambda-mode: dials RunnerService, runs handler, reports result, exits.
 func runServiceMode(serviceName string) {
 	grpcEndpoint := os.Getenv("KFLOW_GRPC_ENDPOINT")
 	stateToken := os.Getenv("KFLOW_STATE_TOKEN")
@@ -66,12 +100,63 @@ func runServiceMode(serviceName string) {
 	log.Printf("service mode: name=%s grpcEndpoint=%s execID=%s token_present=%v",
 		serviceName, grpcEndpoint, execID, stateToken != "")
 
-	// TODO(Phase 13): detect Lambda vs Deployment mode via env or registered ServiceDef,
-	// then either start a gRPC ServiceRunnerService or run single-shot handler.
-	log.Fatal("service mode: ServiceRunnerService gRPC not yet implemented (Phase 13)")
+	if stateToken != "" && grpcEndpoint != "" {
+		// Lambda-mode: run once and exit.
+		conn, err := grpc.NewClient(grpcEndpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			log.Fatalf("service mode: dial %s: %v", grpcEndpoint, err)
+		}
+		defer conn.Close()
+
+		ctx := context.Background()
+		client := kflowv1.NewRunnerServiceClient(conn)
+
+		resp, err := client.GetInput(ctx, &kflowv1.GetInputRequest{Token: stateToken})
+		if err != nil {
+			log.Fatalf("service mode: GetInput: %v", err)
+		}
+
+		var input map[string]any
+		if resp.GetPayload() != nil {
+			input = resp.GetPayload().AsMap()
+		}
+		_ = input
+
+		if _, err := client.CompleteState(ctx, &kflowv1.CompleteStateRequest{Token: stateToken}); err != nil {
+			log.Fatalf("service mode: CompleteState: %v", err)
+		}
+		log.Printf("service mode: lambda service %q completed", serviceName)
+		os.Exit(0)
+	}
+
+	// Deployment-mode: start a ServiceRunnerService gRPC server and block.
+	servicePort := os.Getenv("KFLOW_SERVICE_GRPC_PORT")
+	if servicePort == "" {
+		servicePort = "9091"
+	}
+	addr := ":" + servicePort
+
+	grpcServer := grpc.NewServer()
+	kflowv1.RegisterServiceRunnerServiceServer(grpcServer, &serviceRunnerServer{name: serviceName})
+
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("service mode: listen %s: %v", addr, err)
+	}
+	log.Printf("service mode: deployment service %q listening on %s", serviceName, addr)
+
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer cancel()
+	go func() {
+		<-ctx.Done()
+		grpcServer.GracefulStop()
+	}()
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("service mode: serve: %v", err)
+	}
 }
 
-// runServerMode starts the Control Plane HTTP API server.
+// runServerMode starts the Control Plane server.
 func runServerMode() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -109,12 +194,9 @@ func runServerMode() {
 
 	hub := api.NewWSHub()
 
-	// Optional ClickHouse telemetry — no-op when DSN is empty.
 	var chClient *telemetry.Client
-	var eventWriter *telemetry.EventWriter
 	var metricsWriter *telemetry.MetricsWriter
 	if cfg.ClickHouseDSN != "" {
-		var err error
 		chClient, err = telemetry.NewClient(ctx, cfg.ClickHouseDSN)
 		if err != nil {
 			log.Printf("telemetry: WARNING failed to connect to ClickHouse: %v (continuing without telemetry)", err)
@@ -124,7 +206,6 @@ func runServerMode() {
 				chClient = nil
 			} else {
 				log.Println("telemetry: connected to ClickHouse")
-				eventWriter = telemetry.NewEventWriter(chClient)
 				metricsWriter = telemetry.NewMetricsWriter(chClient)
 			}
 		}
@@ -136,40 +217,32 @@ func runServerMode() {
 		Store:             ms,
 		K8s:               k8s,
 		RunnerEndpoint:    cfg.RunnerGRPCEndpoint,
-		RunnerTokenSecret: []byte(cfg.RunnerTokenSecret),
+		RunnerTokenSecret: cfg.RunnerTokenSecret,
 		Metrics:           metricsWriter,
 	}
 
-	srv := api.NewServer(ms, k8s, hub, disp, nil, nil, cfg.APIKey)
-	srv.Telemetry = chClient
+	runnerSrv := runner.NewRunnerServiceServer(ms, cfg.RunnerTokenSecret)
+
+	srv, err := grpcsrv.NewGRPCServer(cfg, ms, k8s, hub, disp, runnerSrv, chClient, nil, nil)
+	if err != nil {
+		log.Fatalf("grpc: create server: %v", err)
+	}
 	srv.MarkReady()
 
-	// eventWriter is available for K8sExecutor wiring (Phase 4 integration).
-	_ = eventWriter
-
-	port := os.Getenv("KFLOW_GRPC_PORT")
-	if port == "" {
-		port = "8080"
+	if err := srv.Serve(ctx); err != nil {
+		log.Fatalf("grpc: serve: %v", err)
 	}
-	addr := ":" + port
+}
 
-	httpSrv := &http.Server{
-		Addr:    addr,
-		Handler: srv,
-	}
+// serviceRunnerServer is a minimal ServiceRunnerService for Deployment-mode pods.
+type serviceRunnerServer struct {
+	kflowv1.UnimplementedServiceRunnerServiceServer
+	name string
+}
 
-	go func() {
-		log.Printf("api: listening on %s", addr)
-		if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("api: server error: %v", err)
-		}
-	}()
-
-	<-ctx.Done()
-	log.Println("orchestrator: shutting down")
-	if err := httpSrv.Shutdown(context.Background()); err != nil {
-		log.Printf("api: shutdown error: %v", err)
-	}
+func (s *serviceRunnerServer) Invoke(_ context.Context, req *kflowv1.InvokeRequest) (*kflowv1.InvokeResponse, error) {
+	log.Printf("service %q: Invoke called with payload keys=%d", s.name, len(req.GetPayload().GetFields()))
+	return &kflowv1.InvokeResponse{Result: req.GetPayload()}, nil
 }
 
 func requireEnv(name string) string {

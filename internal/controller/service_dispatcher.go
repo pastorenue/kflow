@@ -7,11 +7,15 @@ import (
 	"fmt"
 	"time"
 
+	kflowv1 "github.com/pastorenue/kflow/internal/gen/kflow/v1"
 	"github.com/pastorenue/kflow/internal/k8s"
 	"github.com/pastorenue/kflow/internal/runner"
 	"github.com/pastorenue/kflow/internal/store"
 	"github.com/pastorenue/kflow/internal/telemetry"
 	"github.com/pastorenue/kflow/pkg/kflow"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // ServiceDispatcher routes InvokeService steps to the appropriate K8s resource.
@@ -78,22 +82,46 @@ func (d *ServiceDispatcher) Dispatch(
 }
 
 // dispatchDeployment calls ServiceRunnerService.Invoke via gRPC on the service's
-// ClusterIP. The proto/gRPC protocol is defined in Phase 13.
+// ClusterIP.
 func (d *ServiceDispatcher) dispatchDeployment(
 	ctx context.Context,
 	execID, stateName, serviceName string,
 	rec store.ServiceRecord,
-	_ kflow.Input,
+	input kflow.Input,
 ) (kflow.Output, error) {
 	port := d.ServiceGRPCPort
 	if port == 0 {
 		port = 9091
 	}
-	// TODO(Phase 13): dial rec.ClusterIP:port, call ServiceRunnerServiceClient.Invoke.
-	_ = rec.ClusterIP
-	_ = port
-	return nil, fmt.Errorf("dispatcher: deployment gRPC dispatch not yet implemented (Phase 13): service=%s execID=%s state=%s",
-		serviceName, execID, stateName)
+
+	addr := fmt.Sprintf("%s:%d", rec.ClusterIP, port)
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("dispatcher: dial service %q at %s: %w", serviceName, addr, err)
+	}
+	defer conn.Close()
+
+	var payload *structpb.Struct
+	if input != nil {
+		payload, err = structpb.NewStruct(input)
+		if err != nil {
+			return nil, fmt.Errorf("dispatcher: encode input for service %q: %w", serviceName, err)
+		}
+	} else {
+		payload = &structpb.Struct{}
+	}
+
+	client := kflowv1.NewServiceRunnerServiceClient(conn)
+	resp, err := client.Invoke(ctx, &kflowv1.InvokeRequest{Payload: payload})
+	if err != nil {
+		return nil, fmt.Errorf("dispatcher: invoke service %q (execID=%s state=%s): %w",
+			serviceName, execID, stateName, err)
+	}
+
+	if resp.GetResult() == nil {
+		return kflow.Output{}, nil
+	}
+	return resp.GetResult().AsMap(), nil
 }
 
 // dispatchLambda creates a K8s Job with --service=<serviceName>, waits for

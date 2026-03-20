@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -14,18 +16,18 @@ func TestGenerateAndValidateToken(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	execID, stateName, attempt, err := ValidateStateToken(tok, testSecret)
+	payload, err := ValidateStateToken(tok, testSecret)
 	if err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-	if execID != "exec-1" || stateName != "ValidateOrder" || attempt != 1 {
-		t.Fatalf("unexpected claims: execID=%q stateName=%q attempt=%d", execID, stateName, attempt)
+	if payload.ExecID != "exec-1" || payload.State != "ValidateOrder" || payload.Attempt != 1 {
+		t.Fatalf("unexpected claims: ExecID=%q State=%q Attempt=%d", payload.ExecID, payload.State, payload.Attempt)
 	}
 }
 
 func TestValidateToken_WrongSecret(t *testing.T) {
 	tok, _ := GenerateStateToken("exec-1", "StateA", 1, testSecret)
-	_, _, _, err := ValidateStateToken(tok, []byte("wrong-secret-wrong-secret-wrong!"))
+	_, err := ValidateStateToken(tok, []byte("wrong-secret-wrong-secret-wrong!"))
 	if err != ErrInvalidToken {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
 	}
@@ -34,32 +36,38 @@ func TestValidateToken_WrongSecret(t *testing.T) {
 func TestValidateToken_Tampered(t *testing.T) {
 	tok, _ := GenerateStateToken("exec-1", "StateA", 1, testSecret)
 	tampered := tok[:len(tok)-4] + "XXXX"
-	_, _, _, err := ValidateStateToken(tampered, testSecret)
+	_, err := ValidateStateToken(tampered, testSecret)
 	if err != ErrInvalidToken {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
 	}
 }
 
 func TestValidateToken_MalformedNoDot(t *testing.T) {
-	_, _, _, err := ValidateStateToken("nodottoken", testSecret)
+	_, err := ValidateStateToken("nodottoken", testSecret)
 	if err != ErrInvalidToken {
 		t.Fatalf("expected ErrInvalidToken, got %v", err)
 	}
 }
 
 func TestValidateToken_Expired(t *testing.T) {
-	// Build a token with a past expiry by temporarily patching the TTL is not
-	// practical without clock injection, so we verify the format is valid but
-	// test the expired path by crafting a raw token.
-	_ = testSecret
-	// Just confirm non-expired tokens pass.
-	tok, err := GenerateStateToken("exec-2", "StateB", 2, testSecret)
+	// Craft a token with a past expiry by hand.
+	claims := tokenClaims{
+		ExecID:    "exec-exp",
+		StateName: "StateX",
+		Attempt:   1,
+		ExpiresAt: time.Now().Add(-time.Hour).Unix(), // already expired
+	}
+	payload, err := json.Marshal(claims)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parts := strings.SplitN(tok, ".", 2)
-	if len(parts) != 2 {
-		t.Fatal("expected two parts")
+	encoded := base64.RawURLEncoding.EncodeToString(payload)
+	sig := computeHMAC(testSecret, encoded)
+	expiredTok := encoded + "." + sig
+
+	_, err = ValidateStateToken(expiredTok, testSecret)
+	if err != ErrInvalidToken {
+		t.Fatalf("expected ErrInvalidToken for expired token, got %v", err)
 	}
 }
 
@@ -69,11 +77,18 @@ func TestTokenTTL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, err = ValidateStateToken(tok, testSecret)
+	payload, err := ValidateStateToken(tok, testSecret)
 	if err != nil {
 		t.Fatalf("fresh token should be valid: %v", err)
 	}
 	if time.Since(start) > time.Second {
 		t.Fatal("token generation took too long")
+	}
+	parts := strings.SplitN(tok, ".", 2)
+	if len(parts) != 2 {
+		t.Fatal("expected two parts")
+	}
+	if payload.ExpiresAt.IsZero() {
+		t.Fatal("expected non-zero ExpiresAt")
 	}
 }

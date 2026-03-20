@@ -17,10 +17,15 @@ import (
 
 const tokenTTL = 24 * time.Hour
 
-var (
-	ErrInvalidToken = errors.New("runner: invalid state token")
-	ErrTokenExpired = errors.New("runner: state token has expired")
-)
+var ErrInvalidToken = errors.New("runner: invalid state token")
+
+// TokenPayload contains the verified claims from a state token.
+type TokenPayload struct {
+	ExecID    string    `json:"exec_id"`
+	State     string    `json:"state"`
+	Attempt   int       `json:"attempt"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
 
 type tokenClaims struct {
 	ExecID    string `json:"eid"`
@@ -31,7 +36,11 @@ type tokenClaims struct {
 
 // GenerateStateToken creates an HMAC-SHA256 signed token authorising a single
 // (execID, stateName, attempt) execution. The token is valid for 24 hours.
+// secret must be at least 32 bytes.
 func GenerateStateToken(execID, stateName string, attempt int, secret []byte) (string, error) {
+	if len(secret) < 32 {
+		return "", fmt.Errorf("runner: token secret must be at least 32 bytes")
+	}
 	claims := tokenClaims{
 		ExecID:    execID,
 		StateName: stateName,
@@ -48,34 +57,39 @@ func GenerateStateToken(execID, stateName string, attempt int, secret []byte) (s
 }
 
 // ValidateStateToken parses and verifies a state token. Returns the embedded
-// claims on success. Uses constant-time comparison to prevent timing attacks.
-func ValidateStateToken(token string, secret []byte) (execID, stateName string, attempt int, err error) {
+// TokenPayload on success. Uses constant-time comparison to prevent timing attacks.
+func ValidateStateToken(token string, secret []byte) (TokenPayload, error) {
 	parts := strings.SplitN(token, ".", 2)
 	if len(parts) != 2 {
-		return "", "", 0, ErrInvalidToken
+		return TokenPayload{}, ErrInvalidToken
 	}
 	encoded, sig := parts[0], parts[1]
 
 	expected := computeHMAC(secret, encoded)
 	if subtle.ConstantTimeCompare([]byte(sig), []byte(expected)) != 1 {
-		return "", "", 0, ErrInvalidToken
+		return TokenPayload{}, ErrInvalidToken
 	}
 
 	raw, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
-		return "", "", 0, ErrInvalidToken
+		return TokenPayload{}, ErrInvalidToken
 	}
 
 	var claims tokenClaims
 	if err := json.Unmarshal(raw, &claims); err != nil {
-		return "", "", 0, ErrInvalidToken
+		return TokenPayload{}, ErrInvalidToken
 	}
 
 	if time.Now().Unix() > claims.ExpiresAt {
-		return "", "", 0, ErrTokenExpired
+		return TokenPayload{}, ErrInvalidToken
 	}
 
-	return claims.ExecID, claims.StateName, claims.Attempt, nil
+	return TokenPayload{
+		ExecID:    claims.ExecID,
+		State:     claims.StateName,
+		Attempt:   claims.Attempt,
+		ExpiresAt: time.Unix(claims.ExpiresAt, 0),
+	}, nil
 }
 
 func computeHMAC(secret []byte, data string) string {

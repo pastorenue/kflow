@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build
+.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build proto-gen deps
 
 GO_IMAGE  := golang:1.22
 NODE_IMAGE := node:20-alpine
@@ -70,6 +70,28 @@ helm-template:
 ## docker-build: build the Control Plane container image
 docker-build:
 	docker build -t kflow:dev .
+
+BUF_IMAGE := bufbuild/buf:latest
+
+## proto-gen: generate Go code from proto definitions
+proto-gen:
+	docker run --rm \
+	  -v "$(CURDIR)":/workspace \
+	  -w /workspace \
+	  golang:1.22-alpine \
+	  sh -c "apk add --no-cache git && \
+	    GOPATH=/go go install github.com/bufbuild/buf/cmd/buf@v1.35.0 && \
+	    GOPATH=/go go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.34.1 && \
+	    GOPATH=/go go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.3.0 && \
+	    GOPATH=/go go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@v2.20.0 && \
+	    export PATH=\$$PATH:/go/bin && \
+	    cd proto && buf generate"
+
+## deps: add/update gRPC and grpc-gateway Go dependencies
+deps:
+	docker run --rm -v "$(CURDIR)":/workspace -w /workspace golang:1.22-alpine \
+	  go get google.golang.org/grpc@v1.64.0 \
+	         github.com/grpc-ecosystem/grpc-gateway/v2@v2.20.0
 
 ## clean: remove build artefacts
 clean:
