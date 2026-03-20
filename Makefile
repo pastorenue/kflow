@@ -1,9 +1,11 @@
-.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build proto-gen deps build-cli install-cli
+.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build proto-gen deps build-cli install-cli demo examples py-examples
 
-GO_IMAGE  := golang:1.22
-NODE_IMAGE := node:20-alpine
+GO_IMAGE       := golang:1.22
+NODE_IMAGE     := node:22-alpine
+PYTHON_IMAGE   := python:3.12-slim
 DOCKER_RUN     := docker run --rm -v "$(CURDIR)":/workspace -w /workspace $(GO_IMAGE)
 DOCKER_RUN_UI  := docker run --rm -v "$(CURDIR)/ui":/workspace -w /workspace $(NODE_IMAGE)
+DOCKER_RUN_PY  := docker run --rm -v "$(CURDIR)":/workspace -w /workspace $(PYTHON_IMAGE)
 
 ## build: compile all packages
 build:
@@ -52,9 +54,9 @@ ui-build: ui-install
 ui-check: ui-install
 	$(DOCKER_RUN_UI) npm run check
 
-## ui-dev: run the SvelteKit dev server (host machine, not Docker)
+## ui-dev: run the SvelteKit dev server in Docker
 ui-dev:
-	cd ui && npm run dev
+	docker compose up web-ui
 
 HELM_IMAGE := alpine/helm:3.14.0
 DOCKER_RUN_HELM := docker run --rm -v "$(CURDIR)/deployments/k8s":/chart $(HELM_IMAGE)
@@ -100,6 +102,24 @@ build-cli:
 ## install-cli: install the kflow CLI to GOPATH/bin
 install-cli:
 	$(DOCKER_RUN) go install ./cmd/kflow
+
+## examples: run all SDK example programs locally (no Kubernetes required)
+examples:
+	$(DOCKER_RUN) go run ./examples/01-linear
+	$(DOCKER_RUN) go run ./examples/02-branching
+	$(DOCKER_RUN) go run ./examples/03-retry-catch
+	$(DOCKER_RUN) go run ./examples/04-wait
+
+## py-examples: run all Python SDK example programs locally (no Kubernetes required)
+py-examples:
+	$(DOCKER_RUN_PY) sh -c "pip install -q sdk/python && python examples/01-linear/python/main.py"
+	$(DOCKER_RUN_PY) sh -c "pip install -q sdk/python && python examples/02-branching/python/main.py"
+	$(DOCKER_RUN_PY) sh -c "pip install -q sdk/python && python examples/03-retry-catch/python/main.py"
+	$(DOCKER_RUN_PY) sh -c "pip install -q sdk/python && python examples/04-wait/python/main.py"
+
+## demo: run sample workflow executions (requires: make up)
+demo:
+	@bash scripts/demo.sh
 
 ## clean: remove build artefacts
 clean:

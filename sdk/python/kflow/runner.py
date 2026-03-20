@@ -165,10 +165,10 @@ def _execute_state_local(td, node: dict, input: dict):
         try:
             if td._is_wait:
                 time.sleep(td._wait_seconds)
-                return {}, None
+                return dict(input), None
             if td._is_choice:
                 choice = _call_handler(td._choice_fn, input)
-                return {"__choice__": choice}, None
+                return {**input, "__choice__": choice}, None
             if td._service_target:
                 raise RuntimeError(
                     f"run_local: service dispatch not available for {td._name!r}; "
