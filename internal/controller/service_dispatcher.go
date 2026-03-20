@@ -5,18 +5,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/pastorenue/kflow/internal/k8s"
 	"github.com/pastorenue/kflow/internal/runner"
 	"github.com/pastorenue/kflow/internal/store"
+	"github.com/pastorenue/kflow/internal/telemetry"
 	"github.com/pastorenue/kflow/pkg/kflow"
 )
-
-// Metrics is the interface ServiceDispatcher uses for recording dispatch events.
-// Satisfied by telemetry.MetricsWriter (Phase 6). Nil disables metrics.
-type Metrics interface {
-	RecordDispatch(ctx context.Context, serviceName, execID, stateName string, status string)
-}
 
 // ServiceDispatcher routes InvokeService steps to the appropriate K8s resource.
 // Write-ahead is the caller's responsibility (Executor). Dispatch must NOT call
@@ -28,7 +24,7 @@ type ServiceDispatcher struct {
 	RunnerEndpoint    string // KFLOW_GRPC_ENDPOINT for Lambda containers
 	RunnerTokenSecret []byte
 	ServiceGRPCPort   int // KFLOW_SERVICE_GRPC_PORT (default 9091)
-	Metrics           Metrics
+	Metrics           *telemetry.MetricsWriter // nil = no metrics
 }
 
 // Dispatch executes an InvokeService step for the given (execID, stateName) pair.
@@ -54,14 +50,31 @@ func (d *ServiceDispatcher) Dispatch(
 		return nil, fmt.Errorf("dispatcher: service %q is not Running (status=%s)", serviceName, rec.Status)
 	}
 
+	start := time.Now()
+	var output kflow.Output
+	var dispErr error
+
 	switch rec.Mode {
 	case kflow.Deployment:
-		return d.dispatchDeployment(ctx, execID, stateName, serviceName, rec, input)
+		output, dispErr = d.dispatchDeployment(ctx, execID, stateName, serviceName, rec, input)
 	case kflow.Lambda:
-		return d.dispatchLambda(ctx, execID, stateName, serviceName, input)
+		output, dispErr = d.dispatchLambda(ctx, execID, stateName, serviceName, input)
 	default:
 		return nil, fmt.Errorf("dispatcher: unknown service mode %d", rec.Mode)
 	}
+
+	durationMs := uint64(time.Since(start).Milliseconds())
+	if d.Metrics != nil {
+		var statusCode uint16 = 200
+		errMsg := ""
+		if dispErr != nil {
+			statusCode = 500
+			errMsg = dispErr.Error()
+		}
+		d.Metrics.RecordServiceInvocation(ctx, serviceName, execID+":"+stateName, durationMs, statusCode, errMsg)
+	}
+
+	return output, dispErr
 }
 
 // dispatchDeployment calls ServiceRunnerService.Invoke via gRPC on the service's
@@ -133,7 +146,6 @@ func (d *ServiceDispatcher) dispatchLambda(
 
 func (d *ServiceDispatcher) deleteJobBestEffort(ctx context.Context, name string) {
 	if err := d.K8s.DeleteJob(ctx, name); err != nil {
-		// best-effort; non-fatal
-		_ = err
+		_ = err // best-effort; non-fatal
 	}
 }

@@ -8,14 +8,9 @@ import (
 	"github.com/pastorenue/kflow/internal/k8s"
 	"github.com/pastorenue/kflow/internal/runner"
 	"github.com/pastorenue/kflow/internal/store"
+	"github.com/pastorenue/kflow/internal/telemetry"
 	"github.com/pastorenue/kflow/pkg/kflow"
 )
-
-// Telemetry is the interface K8sExecutor uses to record state transitions.
-// It is satisfied by telemetry.EventWriter (Phase 6). Nil disables telemetry.
-type Telemetry interface {
-	RecordStateTransition(ctx context.Context, execID, stateName string, status store.Status)
-}
 
 // K8sExecutor drives workflow execution by dispatching each state as a
 // Kubernetes Job. It wraps Executor with a K8s-backed Handler.
@@ -25,20 +20,21 @@ type K8sExecutor struct {
 	Image             string
 	RunnerEndpoint    string // KFLOW_GRPC_ENDPOINT injected into Job containers
 	RunnerTokenSecret []byte // HMAC key for state token signing
-	Telemetry         Telemetry
+	Telemetry         *telemetry.EventWriter  // nil = no telemetry
+	LogWriter         *telemetry.LogWriter    // nil = no log capture
 }
 
 // Run drives a full workflow execution using K8s Jobs.
 func (e *K8sExecutor) Run(ctx context.Context, execID string, g *Graph, input kflow.Input) error {
 	ex := &Executor{
 		Store:   e.Store,
-		Handler: e.buildHandler(ctx, execID),
+		Handler: e.buildHandler(execID),
 	}
 	return ex.Run(ctx, execID, g, input)
 }
 
 // buildHandler returns a HandlerFunc that spawns a K8s Job for each state.
-func (e *K8sExecutor) buildHandler(ctx context.Context, execID string) func(context.Context, string, kflow.Input) (kflow.Output, error) {
+func (e *K8sExecutor) buildHandler(execID string) func(context.Context, string, kflow.Input) (kflow.Output, error) {
 	return func(ctx context.Context, stateName string, _ kflow.Input) (kflow.Output, error) {
 		name := k8s.JobName(execID, stateName)
 
@@ -47,9 +43,7 @@ func (e *K8sExecutor) buildHandler(ctx context.Context, execID string) func(cont
 			return nil, fmt.Errorf("k8s_executor: generate token for %q: %w", stateName, err)
 		}
 
-		if e.Telemetry != nil {
-			e.Telemetry.RecordStateTransition(ctx, execID, stateName, store.StatusRunning)
-		}
+		e.Telemetry.RecordStateTransition(ctx, execID, stateName, string(store.StatusPending), string(store.StatusRunning), "")
 
 		_, err = e.K8s.CreateJob(ctx, k8s.JobSpec{
 			Name:  name,
@@ -71,11 +65,14 @@ func (e *K8sExecutor) buildHandler(ctx context.Context, execID string) func(cont
 			return nil, fmt.Errorf("k8s_executor: wait for job %q: %w", name, err)
 		}
 
+		// Capture container logs regardless of outcome (best-effort).
+		if e.LogWriter != nil {
+			telemetry.StreamJobLogs(ctx, e.K8s.Clientset(), e.K8s.Namespace(), name, execID, stateName, e.LogWriter)
+		}
+
 		if result.Failed {
 			e.deleteJobBestEffort(ctx, name)
-			if e.Telemetry != nil {
-				e.Telemetry.RecordStateTransition(ctx, execID, stateName, store.StatusFailed)
-			}
+			e.Telemetry.RecordStateTransition(ctx, execID, stateName, string(store.StatusRunning), string(store.StatusFailed), result.Message)
 			return nil, fmt.Errorf("k8s_executor: job for %q failed: %s", stateName, result.Message)
 		}
 
@@ -86,9 +83,7 @@ func (e *K8sExecutor) buildHandler(ctx context.Context, execID string) func(cont
 		}
 
 		e.deleteJobBestEffort(ctx, name)
-		if e.Telemetry != nil {
-			e.Telemetry.RecordStateTransition(ctx, execID, stateName, store.StatusCompleted)
-		}
+		e.Telemetry.RecordStateTransition(ctx, execID, stateName, string(store.StatusRunning), string(store.StatusCompleted), "")
 		return output, nil
 	}
 }

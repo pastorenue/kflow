@@ -37,6 +37,11 @@ type Config struct {
 	// Empty means auth is disabled (dev mode only).
 	// Source: KFLOW_API_KEY
 	APIKey string
+
+	// ClickHouseDSN is the ClickHouse connection string.
+	// If empty, telemetry is disabled (no-op mode).
+	// Source: KFLOW_CLICKHOUSE_DSN
+	ClickHouseDSN string
 }
 
 // LoadConfig reads configuration from environment variables.
@@ -76,6 +81,8 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	clickhouseDSN := os.Getenv("KFLOW_CLICKHOUSE_DSN")
+
 	return &Config{
 		MongoURI:           mongoURI,
 		MongoDB:            mongoDB,
@@ -83,6 +90,7 @@ func LoadConfig() (*Config, error) {
 		RunnerGRPCEndpoint: runnerEndpoint,
 		RunnerTokenSecret:  tokenSecret,
 		APIKey:             apiKey,
+		ClickHouseDSN:      clickhouseDSN,
 	}, nil
 }
 

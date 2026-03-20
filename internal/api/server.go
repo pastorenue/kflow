@@ -14,6 +14,7 @@ import (
 	"github.com/pastorenue/kflow/internal/controller"
 	k8sclient "github.com/pastorenue/kflow/internal/k8s"
 	"github.com/pastorenue/kflow/internal/store"
+	"github.com/pastorenue/kflow/internal/telemetry"
 	"github.com/pastorenue/kflow/pkg/kflow"
 )
 
@@ -27,6 +28,7 @@ type Server struct {
 	K8s        *k8sclient.Client
 	Hub        *WSHub
 	Dispatcher *controller.ServiceDispatcher
+	Telemetry  *telemetry.Client // nil = telemetry disabled
 
 	// Workflows is the set of workflow names registered with this server.
 	Workflows []string
@@ -88,6 +90,11 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("DELETE /api/v1/services/{name}", s.handleDeleteService)
 
 	s.mux.HandleFunc("GET /api/v1/ws", s.Hub.ServeWS)
+
+	// Telemetry endpoints (no-op when s.Telemetry == nil)
+	s.mux.HandleFunc("GET /api/v1/executions/{id}/events", s.handleListEvents)
+	s.mux.HandleFunc("GET /api/v1/services/{name}/metrics", s.handleListMetrics)
+	s.mux.HandleFunc("GET /api/v1/logs", s.handleListLogs)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {

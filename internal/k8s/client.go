@@ -46,3 +46,7 @@ func NewClient(namespace string) (*Client, error) {
 
 // Namespace returns the namespace this client is scoped to.
 func (c *Client) Namespace() string { return c.namespace }
+
+// Clientset returns the underlying kubernetes.Clientset.
+// Used by telemetry.StreamJobLogs to read pod logs.
+func (c *Client) Clientset() *kubernetes.Clientset { return c.clientset }

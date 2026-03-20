@@ -21,6 +21,7 @@ import (
 	"github.com/pastorenue/kflow/internal/controller"
 	k8sclient "github.com/pastorenue/kflow/internal/k8s"
 	"github.com/pastorenue/kflow/internal/store"
+	"github.com/pastorenue/kflow/internal/telemetry"
 )
 
 func main() {
@@ -97,15 +98,43 @@ func runServerMode() {
 
 	hub := api.NewWSHub()
 
+	// Optional ClickHouse telemetry — no-op when DSN is empty.
+	var chClient *telemetry.Client
+	var eventWriter *telemetry.EventWriter
+	var metricsWriter *telemetry.MetricsWriter
+	if cfg.ClickHouseDSN != "" {
+		var err error
+		chClient, err = telemetry.NewClient(ctx, cfg.ClickHouseDSN)
+		if err != nil {
+			log.Printf("telemetry: WARNING failed to connect to ClickHouse: %v (continuing without telemetry)", err)
+		} else {
+			if err := chClient.InitSchema(ctx); err != nil {
+				log.Printf("telemetry: WARNING failed to init schema: %v (continuing without telemetry)", err)
+				chClient = nil
+			} else {
+				log.Println("telemetry: connected to ClickHouse")
+				eventWriter = telemetry.NewEventWriter(chClient)
+				metricsWriter = telemetry.NewMetricsWriter(chClient)
+			}
+		}
+	} else {
+		log.Println("telemetry: KFLOW_CLICKHOUSE_DSN not set — telemetry disabled")
+	}
+
 	disp := &controller.ServiceDispatcher{
 		Store:             ms,
 		K8s:               k8s,
 		RunnerEndpoint:    cfg.RunnerGRPCEndpoint,
 		RunnerTokenSecret: []byte(cfg.RunnerTokenSecret),
+		Metrics:           metricsWriter,
 	}
 
 	srv := api.NewServer(ms, k8s, hub, disp, nil, nil)
+	srv.Telemetry = chClient
 	srv.MarkReady()
+
+	// eventWriter is available for K8sExecutor wiring (Phase 4 integration).
+	_ = eventWriter
 
 	port := os.Getenv("KFLOW_GRPC_PORT")
 	if port == "" {
