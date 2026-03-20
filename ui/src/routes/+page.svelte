@@ -78,7 +78,7 @@
 {#if loading}
   <p class="empty">Loading…</p>
 {:else if error}
-  <p class="empty text-red-400">{error}</p>
+  <p class="empty text-red-600">{error}</p>
 {:else if executions.length === 0}
   <p class="empty">No executions found.</p>
 {:else}

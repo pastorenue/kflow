@@ -90,7 +90,7 @@
 {#if loading}
   <p class="empty">Loading…</p>
 {:else if error}
-  <p class="empty text-red-400">{error}</p>
+  <p class="empty text-red-600">{error}</p>
 {:else if execution}
   {#if wasDisconnected}
     <div class="bg-amber-900/30 text-amber-300 px-3 py-2 rounded-md mb-4 text-sm">WebSocket reconnected — refreshing state…</div>
@@ -127,7 +127,7 @@
             <td><span class="badge badge-{s.status.toLowerCase()}">{s.status}</span></td>
             <td>{s.attempt}</td>
             <td>{duration(s.created_at, s.updated_at)}</td>
-            <td class="text-red-400 text-xs">{s.error || '—'}</td>
+            <td class="text-red-600 text-xs">{s.error || '—'}</td>
           </tr>
           {#if expandedState === s.state_name}
             <tr>
@@ -173,7 +173,7 @@
               →
               <span class="badge badge-{ev.to_status.toLowerCase()}">{ev.to_status}</span>
             </td>
-            <td class="text-red-400 text-xs">{ev.error || '—'}</td>
+            <td class="text-red-600 text-xs">{ev.error || '—'}</td>
           </tr>
         {/each}
       </tbody>
