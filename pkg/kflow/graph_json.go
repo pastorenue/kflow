@@ -6,41 +6,40 @@ import (
 	"time"
 )
 
-// Wire-format structs matching internal/api/workflow_handler.go
+// Proto JSON wire-format structs for RegisterWorkflow (grpc-gateway camelCase).
+// Matches proto/kflow/v1/workflow.proto WorkflowGraph / WorkflowState / WorkflowStep.
 
-type retryPolicyJSON struct {
-	MaxAttempts    int `json:"max_attempts"`
-	BackoffSeconds int `json:"backoff_seconds"`
+type protoStateJSON struct {
+	Name          string `json:"name"`
+	Kind          string `json:"kind"`
+	ServiceTarget string `json:"serviceTarget,omitempty"`
+	WaitSeconds   int64  `json:"waitSeconds,omitempty"`
+	CatchState    string `json:"catchState,omitempty"`
 }
 
-type stateNodeJSON struct {
-	Name          string           `json:"name"`
-	Type          string           `json:"type"`
-	HandlerRef    string           `json:"handler_ref"`
-	ServiceTarget string           `json:"service_target"`
-	Catch         string           `json:"catch"`
-	Retry         *retryPolicyJSON `json:"retry,omitempty"`
+type protoStepJSON struct {
+	Name  string `json:"name"`
+	Next  string `json:"next,omitempty"`
+	Catch string `json:"catch,omitempty"`
+	IsEnd bool   `json:"isEnd,omitempty"`
 }
 
-type flowEntryJSON struct {
-	Name  string           `json:"name"`
-	Next  string           `json:"next"`
-	Catch string           `json:"catch"`
-	IsEnd bool             `json:"is_end"`
-	Retry *retryPolicyJSON `json:"retry,omitempty"`
+type protoGraphJSON struct {
+	Name   string           `json:"name"`
+	States []protoStateJSON `json:"states"`
+	Steps  []protoStepJSON  `json:"steps"`
 }
 
-type workflowGraphJSON struct {
-	Name   string          `json:"name"`
-	States []stateNodeJSON `json:"states"`
-	Flow   []flowEntryJSON `json:"flow"`
+type registerWorkflowRequestJSON struct {
+	Graph protoGraphJSON `json:"graph"`
 }
 
-func toGraphJSON(wf *Workflow) workflowGraphJSON {
+func toRegisterJSON(wf *Workflow) registerWorkflowRequestJSON {
 	tasks := wf.Tasks()
+	steps := wf.Steps()
 
-	states := make([]stateNodeJSON, 0, len(tasks))
-	for _, step := range wf.Steps() {
+	states := make([]protoStateJSON, 0, len(steps))
+	for _, step := range steps {
 		td, ok := tasks[step.Name()]
 		if !ok {
 			continue
@@ -53,44 +52,34 @@ func toGraphJSON(wf *Workflow) workflowGraphJSON {
 		} else if td.IsParallel() {
 			kind = "parallel"
 		}
-		node := stateNodeJSON{
+		s := protoStateJSON{
 			Name:          td.Name(),
-			Type:          kind,
+			Kind:          kind,
 			ServiceTarget: td.ServiceTarget(),
-			Catch:         td.CatchState(),
+			CatchState:    td.CatchState(),
 		}
-		if td.RetryPolicy() != nil {
-			rp := td.RetryPolicy()
-			node.Retry = &retryPolicyJSON{
-				MaxAttempts:    rp.MaxAttempts,
-				BackoffSeconds: rp.BackoffSeconds,
-			}
+		if td.IsWait() {
+			s.WaitSeconds = int64(td.WaitDur().Seconds())
 		}
-		states = append(states, node)
+		states = append(states, s)
 	}
 
-	flow := make([]flowEntryJSON, 0, len(wf.Steps()))
-	for _, step := range wf.Steps() {
-		fe := flowEntryJSON{
+	protoSteps := make([]protoStepJSON, 0, len(steps))
+	for _, step := range steps {
+		protoSteps = append(protoSteps, protoStepJSON{
 			Name:  step.Name(),
 			Next:  step.NextState(),
 			Catch: step.CatchState(),
 			IsEnd: step.IsEnd(),
-		}
-		if step.RetryPolicy() != nil {
-			rp := step.RetryPolicy()
-			fe.Retry = &retryPolicyJSON{
-				MaxAttempts:    rp.MaxAttempts,
-				BackoffSeconds: rp.BackoffSeconds,
-			}
-		}
-		flow = append(flow, fe)
+		})
 	}
 
-	return workflowGraphJSON{
-		Name:   wf.Name(),
-		States: states,
-		Flow:   flow,
+	return registerWorkflowRequestJSON{
+		Graph: protoGraphJSON{
+			Name:   wf.Name(),
+			States: states,
+			Steps:  protoSteps,
+		},
 	}
 }
 

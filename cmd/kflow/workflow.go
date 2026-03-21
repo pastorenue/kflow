@@ -58,7 +58,7 @@ var workflowRunCmd = &cobra.Command{
 		if err := json.Unmarshal([]byte(inputJSON), &input); err != nil {
 			return fmt.Errorf("parsing --input JSON: %w", err)
 		}
-		result, err := doJSON("POST", "/api/v1/workflows/"+name+"/run", input)
+		result, err := doJSON("POST", "/api/v1/workflows/"+name+"/run", map[string]any{"input": input})
 		if err != nil {
 			return err
 		}

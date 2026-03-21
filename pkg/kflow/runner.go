@@ -48,7 +48,7 @@ func RunService(svc *ServiceDef) error {
 }
 
 func registerWorkflow(server, apiKey string, wf *Workflow) error {
-	g := toGraphJSON(wf)
+	g := toRegisterJSON(wf)
 	body, err := json.Marshal(g)
 	if err != nil {
 		return fmt.Errorf("marshal workflow graph: %w", err)
@@ -78,7 +78,7 @@ func registerWorkflow(server, apiKey string, wf *Workflow) error {
 }
 
 func triggerExecution(server, apiKey, name string, input Input) error {
-	body, err := json.Marshal(input)
+	body, err := json.Marshal(map[string]any{"input": input})
 	if err != nil {
 		return fmt.Errorf("marshal input: %w", err)
 	}
