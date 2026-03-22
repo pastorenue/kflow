@@ -97,7 +97,7 @@
   {/if}
 
   <div class="mb-6">
-    <h1>Execution: <code>{execution.id}</code></h1>
+    <h1 class="text-2xl font-medium">Execution: <code>{execution.id}</code></h1>
     <div class="flex gap-6 flex-wrap text-sm text-muted">
       <span>Workflow: <strong class="text-text">{execution.workflow}</strong></span>
       <span>Status: <span class="badge badge-{execution.status.toLowerCase()}">{execution.status}</span></span>
@@ -106,7 +106,7 @@
     </div>
   </div>
 
-  <h2 class="text-base text-muted mt-6 mb-2 border-b border-border pb-1">States</h2>
+  <h2 class="text-xl text-muted mt-6 mb-2 border-b border-border pb-1">States</h2>
   {#if states.length === 0}
     <p class="empty">No states yet.</p>
   {:else}
@@ -150,7 +150,7 @@
     </table>
   {/if}
 
-  <h2 class="text-base text-muted mt-6 mb-2 border-b border-border pb-1">Event Timeline</h2>
+  <h2 class="text-xl text-muted mt-6 mb-2 border-b border-border pb-1">Event Timeline</h2>
   {#if events.length === 0}
     <p class="empty">No events recorded.</p>
   {:else}

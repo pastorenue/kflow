@@ -44,7 +44,7 @@
 </script>
 
 <div class="p-8 max-w-6xl">
-<h1>Services</h1>
+<h1 class="text-3xl font-medium">Services</h1>
 
 <div class="filters">
   <button on:click={load}>Refresh</button>

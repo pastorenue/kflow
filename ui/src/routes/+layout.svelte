@@ -111,7 +111,7 @@
           <rect x="1" y="10" width="7" height="7" rx="1.5" fill="#0f766e" opacity="0.4"/>
           <rect x="10" y="10" width="7" height="7" rx="1.5" fill="#0f766e" opacity="0.2"/>
         </svg>
-        <span class="text-text font-semibold tracking-tight" style="font-family: var(--font-display); font-size: 1rem; letter-spacing: -0.02em;">kflow</span>
+        <span class="text-text font-semibold tracking-tight" style="font-family: var(--font-display); font-size: 2rem; letter-spacing: -0.02em;">kflow</span>
       </div>
 
       <!-- Nav section label -->

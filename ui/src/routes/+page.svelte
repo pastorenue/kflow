@@ -78,7 +78,7 @@
 </script>
 
 <div class="p-8 max-w-6xl">
-<h1>Executions</h1>
+<h1 class="text-3xl font-medium">Executions</h1>
 
 <div class="filters">
   <input bind:value={filterWorkflow} placeholder="Workflow name" />

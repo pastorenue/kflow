@@ -73,7 +73,7 @@
 </script>
 
 <div class="p-8 max-w-6xl">
-<h1>Log Explorer</h1>
+<h1 class="text-3xl font-medium">Log Explorer</h1>
 
 <form class="filters" on:submit|preventDefault={() => search()}>
   <input bind:value={filterExecId} placeholder="Execution ID" />
