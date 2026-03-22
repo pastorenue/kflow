@@ -18,9 +18,6 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (typeof localStorage !== 'undefined') {
       localStorage.removeItem('kflow_token');
     }
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
     throw { error: 'unauthorized', code: 'auth_required' };
   }
 
@@ -35,20 +32,6 @@ export async function getAuthStatus(): Promise<{ auth_enabled: boolean }> {
   const res = await fetch(`${BASE}/api/v1/auth/status`);
   if (!res.ok) return { auth_enabled: false };
   return res.json() as Promise<{ auth_enabled: boolean }>;
-}
-
-export async function login(apiKey: string): Promise<string> {
-  const res = await fetch(`${BASE}/api/v1/auth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ api_key: apiKey }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText, code: String(res.status) }));
-    throw body as { error: string; code: string };
-  }
-  const data = (await res.json()) as { token: string };
-  return data.token;
 }
 
 function qs(params: Record<string, string | number | undefined>): string {

@@ -7,9 +7,58 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
+// tokenFilePath returns the path to the persisted session token file.
+func tokenFilePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".kflow", "token")
+}
+
+// saveToken writes the token to ~/.kflow/token with mode 0600.
+func saveToken(token string) error {
+	dir := filepath.Dir(tokenFilePath())
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create token dir: %w", err)
+	}
+	return os.WriteFile(tokenFilePath(), []byte(token), 0600)
+}
+
+// loadSavedToken reads ~/.kflow/token, returning "" on any error.
+func loadSavedToken() string {
+	p := tokenFilePath()
+	if p == "" {
+		return ""
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return ""
+	}
+	return string(b)
+}
+
+// resolveBearer returns the bearer token to use: --api-key flag, then saved token.
+func resolveBearer() string {
+	if apiKeyFlag != "" {
+		return apiKeyFlag
+	}
+	return loadSavedToken()
+}
+
 func doJSON(method, path string, body any) (map[string]any, error) {
+	return doJSONWithBearer(method, path, body, resolveBearer())
+}
+
+// doJSONNoAuth sends a request without any Authorization header.
+func doJSONNoAuth(method, path string, body any) (map[string]any, error) {
+	return doJSONWithBearer(method, path, body, "")
+}
+
+func doJSONWithBearer(method, path string, body any, bearer string) (map[string]any, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -26,8 +75,8 @@ func doJSON(method, path string, body any) (map[string]any, error) {
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if apiKeyFlag != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKeyFlag)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 
 	resp, err := http.DefaultClient.Do(req)

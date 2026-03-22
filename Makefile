@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build proto-gen proto-gen-python deps build-cli install-cli demo examples py-examples example-cp example-k8s-build example-k8s-load example-k8s-setup example-k8s-run example-k8s-clean
+.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build proto-gen proto-gen-python deps build-ui build-cli install-cli demo examples py-examples example-cp example-k8s-build example-k8s-load example-k8s-setup example-k8s-run example-k8s-clean
 
 GO_IMAGE       := golang:1.22
 NODE_IMAGE     := node:22-alpine
@@ -95,7 +95,13 @@ deps:
 	  go get google.golang.org/grpc@v1.64.0 \
 	         github.com/grpc-ecosystem/grpc-gateway/v2@v2.20.0
 
-## build-cli: build the kflow CLI binary
+## build-ui: build the SvelteKit dashboard and embed it in the CLI assets
+build-ui: ui-install
+	$(DOCKER_RUN_UI) npm run build
+	rm -rf cmd/kflow/uiassets/build
+	cp -r ui/build cmd/kflow/uiassets/build
+
+## build-cli: build the kflow CLI binary (run make build-ui first for embedded dashboard)
 build-cli:
 	$(DOCKER_RUN) go build -o bin/kflow ./cmd/kflow
 

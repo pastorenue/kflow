@@ -24,6 +24,8 @@ func init() {
 	rootCmd.AddCommand(workflowCmd)
 	rootCmd.AddCommand(executionCmd)
 	rootCmd.AddCommand(serviceCmd)
+	rootCmd.AddCommand(authCmd)
+	rootCmd.AddCommand(uiCmd)
 }
 
 func main() {

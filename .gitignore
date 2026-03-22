@@ -16,6 +16,9 @@ sdk/rust/target/
 *.test
 vendor/
 
+# Embedded UI build output (populated by make build-ui)
+cmd/kflow/uiassets/build/
+
 # Editor / OS
 .DS_Store
 .idea/
