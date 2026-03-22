@@ -107,6 +107,7 @@ TARGET_ARCH ?= arm64
 ## build-cli: build the kflow CLI binary (run make build-ui first for embedded dashboard)
 build-cli: build-ui
 	$(DOCKER_RUN) env GOOS=$(TARGET_OS) GOARCH=$(TARGET_ARCH) go build -o bin/kflow ./cmd/kflow
+	make install-cli
 
 ## install-cli: install the kflow CLI to GOPATH/bin
 install-cli:
