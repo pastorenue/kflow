@@ -202,6 +202,7 @@ func runServerMode() {
 	var chClient *telemetry.Client
 	var metricsWriter *telemetry.MetricsWriter
 	var eventWriter *telemetry.EventWriter
+	var logWriter *telemetry.LogWriter
 	if cfg.ClickHouseDSN != "" {
 		chClient, err = telemetry.NewClient(ctx, cfg.ClickHouseDSN)
 		if err != nil {
@@ -214,6 +215,7 @@ func runServerMode() {
 				log.Println("telemetry: connected to ClickHouse")
 				metricsWriter = telemetry.NewMetricsWriter(chClient)
 				eventWriter = telemetry.NewEventWriter(chClient)
+				logWriter = telemetry.NewLogWriter(chClient)
 			}
 		}
 	} else {
@@ -261,6 +263,7 @@ func runServerMode() {
 				RunnerEndpoint:    cfg.RunnerGRPCEndpoint,
 				RunnerTokenSecret: cfg.RunnerTokenSecret,
 				Telemetry:         eventWriter,
+				LogWriter:         logWriter,
 				Notify:            notify,
 			}
 			runErr = ke.Run(context.Background(), execID, g, input)
