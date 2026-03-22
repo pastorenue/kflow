@@ -28,6 +28,27 @@
   let wsConnected = $state(false);
   let ws: WebSocket | null = null;
 
+  let tableContainer: HTMLDivElement;
+  let autoScroll = $state(true);
+
+  function scrollToBottom() {
+    if (tableContainer) {
+      tableContainer.scrollTop = tableContainer.scrollHeight;
+    }
+  }
+
+  function onScroll() {
+    if (!tableContainer) return;
+    const { scrollTop, clientHeight, scrollHeight } = tableContainer;
+    autoScroll = scrollTop + clientHeight >= scrollHeight - 40;
+  }
+
+  $effect(() => {
+    if (logs.length > 0 && autoScroll) {
+      scrollToBottom();
+    }
+  });
+
   let timeRange: TimeRange = $state('live');
   let customSince = $state('');
   let customUntil = $state('');
@@ -239,6 +260,21 @@
   };
 </script>
 
+<style>
+  .log-scroll-container {
+    overflow-y: auto;
+    max-height: calc(100vh - 22rem);
+    border-radius: 0.375rem;
+  }
+
+  .log-scroll-container thead th {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--color-surface, white);
+  }
+</style>
+
 <div class="p-8 max-w-6xl">
 <h1 class="text-3xl font-medium">Log Explorer</h1>
 
@@ -309,6 +345,11 @@
   {/if}
 </div>
 
+<div
+  bind:this={tableContainer}
+  onscroll={onScroll}
+  class="log-scroll-container"
+>
 <table>
   <thead>
     <tr>
@@ -347,4 +388,13 @@
     {/if}
   </tbody>
 </table>
+</div>
+
+{#if !autoScroll}
+  <button
+    type="button"
+    class="mt-2 text-xs"
+    onclick={() => { autoScroll = true; scrollToBottom(); }}
+  >↓ Resume auto-scroll</button>
+{/if}
 </div>
