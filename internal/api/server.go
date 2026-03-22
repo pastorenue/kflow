@@ -97,6 +97,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/v1/executions", s.handleListExecutions)
 	s.mux.HandleFunc("GET /api/v1/executions/{id}", s.handleGetExecution)
 	s.mux.HandleFunc("GET /api/v1/executions/{id}/states", s.handleListStates)
+	s.mux.HandleFunc("GET /api/v1/executions/{id}/stream", s.handleExecutionStream)
 
 	s.mux.HandleFunc("GET /api/v1/services", s.handleListServices)
 	s.mux.HandleFunc("POST /api/v1/services", s.handleCreateService)

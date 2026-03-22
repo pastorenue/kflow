@@ -45,6 +45,29 @@ function qs(params: Record<string, string | number | undefined>): string {
 
 // ---- Types ----
 
+export interface FlowEntry {
+  name: string;
+  next: string;
+  catch: string;
+  is_end: boolean;
+  retry?: { max_attempts: number; backoff_seconds: number };
+}
+
+export interface WorkflowState {
+  name: string;
+  type: string;
+  handler_ref: string;
+  service_target: string;
+  catch: string;
+  retry?: { max_attempts: number; backoff_seconds: number };
+}
+
+export interface WorkflowGraph {
+  name: string;
+  states: WorkflowState[];
+  flow: FlowEntry[];
+}
+
 export interface Execution {
   id: string;
   workflow: string;
@@ -271,6 +294,34 @@ export async function getServiceMetrics(
     error: r.error ?? '',
     occurred_at: r.occurredAt ?? r.occurred_at ?? '',
   }));
+}
+
+export async function listWorkflows(): Promise<string[]> {
+  const resp = await request<{ workflows?: string[] }>('/api/v1/workflows');
+  return resp.workflows ?? [];
+}
+
+export async function getWorkflow(name: string): Promise<WorkflowGraph> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resp = await request<any>(`/api/v1/workflows/${encodeURIComponent(name)}`);
+  return {
+    name: resp.name ?? '',
+    states: (resp.states ?? []).map((s: any) => ({
+      name: s.name ?? '',
+      type: s.type ?? '',
+      handler_ref: s.handler_ref ?? s.handlerRef ?? '',
+      service_target: s.service_target ?? s.serviceTarget ?? '',
+      catch: s.catch ?? '',
+      retry: s.retry,
+    })),
+    flow: (resp.flow ?? []).map((f: any) => ({
+      name: f.name ?? '',
+      next: f.next ?? '',
+      catch: f.catch ?? '',
+      is_end: f.is_end ?? f.isEnd ?? false,
+      retry: f.retry,
+    })),
+  };
 }
 
 export async function queryLogs(params: {
