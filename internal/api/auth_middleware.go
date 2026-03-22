@@ -47,8 +47,8 @@ func BearerAuthMiddleware(apiKey string) func(http.Handler) http.Handler {
 			token := r.Header.Get("Authorization")
 			if strings.HasPrefix(token, "Bearer ") {
 				token = strings.TrimPrefix(token, "Bearer ")
-			} else if r.URL.Path == "/api/v1/ws" {
-				// WebSocket: fall back to ?token= query param.
+			} else if strings.HasPrefix(r.URL.Path, "/api/v1/ws") {
+				// WebSocket connections cannot set headers; fall back to ?token= query param.
 				token = r.URL.Query().Get("token")
 			} else {
 				token = ""
