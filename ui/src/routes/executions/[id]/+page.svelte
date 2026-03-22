@@ -150,6 +150,10 @@
     </table>
   {/if}
 
+  <div class="mt-4">
+    <a href="/logs?execution_id={id}" class="text-xs text-muted hover:text-text underline">View logs for this execution →</a>
+  </div>
+
   <h2 class="text-xl text-muted mt-6 mb-2 border-b border-border pb-1">Event Timeline</h2>
   {#if events.length === 0}
     <p class="empty">No events recorded.</p>

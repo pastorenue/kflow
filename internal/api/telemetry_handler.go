@@ -1,9 +1,11 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/pastorenue/kflow/internal/store"
 	"github.com/pastorenue/kflow/internal/telemetry"
 )
 
@@ -79,7 +81,53 @@ func (s *Server) handleListMetrics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListLogs(w http.ResponseWriter, r *http.Request) {
 	if s.Telemetry == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"logs": []any{}, "total": 0})
+		// Fallback: synthesize log rows from MongoDB state records so the
+		// Logs tab is never empty even when ClickHouse is not configured.
+		execID := r.URL.Query().Get("execution_id")
+		if execID == "" {
+			writeJSON(w, http.StatusOK, map[string]any{"logs": []any{}, "total": 0})
+			return
+		}
+		states, err := s.Store.ListStates(r.Context(), execID)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"logs": []any{}, "total": 0})
+			return
+		}
+		var rows []telemetry.LogRow
+		for _, st := range states {
+			rows = append(rows, telemetry.LogRow{
+				LogID:       st.ExecutionID + "/" + st.StateName + "/start",
+				ExecutionID: st.ExecutionID,
+				StateName:   st.StateName,
+				Level:       "INFO",
+				Message:     fmt.Sprintf("[%s] started", st.StateName),
+				OccurredAt:  st.CreatedAt,
+			})
+			switch st.Status {
+			case store.StatusCompleted:
+				rows = append(rows, telemetry.LogRow{
+					LogID:       st.ExecutionID + "/" + st.StateName + "/complete",
+					ExecutionID: st.ExecutionID,
+					StateName:   st.StateName,
+					Level:       "INFO",
+					Message:     fmt.Sprintf("[%s] completed", st.StateName),
+					OccurredAt:  st.UpdatedAt,
+				})
+			case store.StatusFailed:
+				rows = append(rows, telemetry.LogRow{
+					LogID:       st.ExecutionID + "/" + st.StateName + "/fail",
+					ExecutionID: st.ExecutionID,
+					StateName:   st.StateName,
+					Level:       "ERROR",
+					Message:     fmt.Sprintf("[%s] failed: %s", st.StateName, st.Error),
+					OccurredAt:  st.UpdatedAt,
+				})
+			}
+		}
+		if rows == nil {
+			rows = []telemetry.LogRow{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"logs": rows, "total": len(rows)})
 		return
 	}
 
