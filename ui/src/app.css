@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans:    'Figtree', ui-sans-serif, system-ui, sans-serif;
-  --font-display: 'Syne', ui-sans-serif, system-ui, sans-serif;
+  --font-sans:    'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Instrument Serif', ui-serif, Georgia, serif;
 
   /* background layers */
   --color-base:    #f5f4f0;
@@ -43,7 +43,8 @@
   th     { @apply text-left px-4 py-3 text-muted font-medium border-b border-border text-xs tracking-wide uppercase; }
   td     { @apply px-4 py-3 border-b border-border/60; }
   tr:hover td { @apply bg-raised cursor-pointer; }
-  h1     { @apply text-xl font-semibold text-text mt-0 mb-6 tracking-tight; }
+  h1, h2, h3, h4 { font-family: var(--font-display); @apply font-normal text-text tracking-tight; }
+  h1 { @apply text-xl mt-0 mb-6; }
   input, select { @apply bg-surface border border-border rounded px-3 py-1.5 text-sm text-text outline-none focus:ring-1 focus:ring-accent; }
   button { @apply bg-surface border border-border rounded px-4 py-1.5 text-sm text-text cursor-pointer hover:bg-raised transition-colors; }
   pre    { @apply bg-raised border border-border rounded p-3 text-xs overflow-x-auto text-text font-mono; }
