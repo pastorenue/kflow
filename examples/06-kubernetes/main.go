@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/pastorenue/kflow/examples/06-kubernetes/handlers"
 	"github.com/pastorenue/kflow/pkg/kflow"
@@ -9,6 +10,9 @@ import (
 
 func main() {
 	wf := kflow.New("data-pipeline")
+	if img := os.Getenv("KFLOW_IMAGE"); img != "" {
+		wf.WithImage(img)
+	}
 
 	wf.Task("IngestData", handlers.IngestData)
 	wf.Task("TransformData", handlers.TransformData).

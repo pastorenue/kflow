@@ -297,31 +297,38 @@ export async function getServiceMetrics(
 }
 
 export async function listWorkflows(): Promise<string[]> {
-  const resp = await request<{ workflows?: string[] }>('/api/v1/workflows');
-  return resp.workflows ?? [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const resp = await request<{ workflows?: any[] }>('/api/v1/workflows');
+  return (resp.workflows ?? []).map((w) => (typeof w === 'string' ? w : (w.name ?? '')));
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toWorkflowGraph(g: any): WorkflowGraph {
+  return {
+    name: g.name ?? '',
+    states: (g.states ?? []).map((s: any) => ({
+      name: s.name ?? '',
+      type: s.kind ?? s.type ?? '',
+      handler_ref: s.handlerRef ?? s.handler_ref ?? '',
+      service_target: s.serviceTarget ?? s.service_target ?? '',
+      catch: s.catchState ?? s.catch ?? '',
+      retry: s.retry,
+    })),
+    flow: (g.steps ?? g.flow ?? []).map((f: any) => ({
+      name: f.name ?? '',
+      next: f.next ?? '',
+      catch: f.catch ?? '',
+      is_end: f.isEnd ?? f.is_end ?? false,
+      retry: f.retry,
+    })),
+  };
 }
 
 export async function getWorkflow(name: string): Promise<WorkflowGraph> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const resp = await request<any>(`/api/v1/workflows/${encodeURIComponent(name)}`);
-  return {
-    name: resp.name ?? '',
-    states: (resp.states ?? []).map((s: any) => ({
-      name: s.name ?? '',
-      type: s.type ?? '',
-      handler_ref: s.handler_ref ?? s.handlerRef ?? '',
-      service_target: s.service_target ?? s.serviceTarget ?? '',
-      catch: s.catch ?? '',
-      retry: s.retry,
-    })),
-    flow: (resp.flow ?? []).map((f: any) => ({
-      name: f.name ?? '',
-      next: f.next ?? '',
-      catch: f.catch ?? '',
-      is_end: f.is_end ?? f.isEnd ?? false,
-      retry: f.retry,
-    })),
-  };
+  // grpc-gateway wraps in { graph: {...} }; local server returns the object directly
+  return toWorkflowGraph(resp.graph ?? resp);
 }
 
 export async function queryLogs(params: {

@@ -36,6 +36,7 @@ message WorkflowGraph {
   string name = 1;
   repeated WorkflowState states = 2;
   repeated WorkflowStep steps = 3;
+  string image = 4;
 }
 
 message WorkflowState {

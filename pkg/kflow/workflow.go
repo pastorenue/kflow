@@ -5,6 +5,7 @@ import "time"
 // Workflow is the Aggregate Root for a state-machine definition.
 type Workflow struct {
 	name  string
+	image string
 	tasks map[string]*TaskDef
 	steps []*StepBuilder
 	// names preserves insertion order including duplicates so Validate() can
@@ -58,8 +59,18 @@ func (w *Workflow) Flow(steps ...*StepBuilder) *Workflow {
 	return w
 }
 
+// WithImage sets the container image used to execute this workflow's states as K8s Jobs.
+// Leave empty for in-process (pass-through) execution.
+func (w *Workflow) WithImage(image string) *Workflow {
+	w.image = image
+	return w
+}
+
 // Name returns the workflow name.
 func (w *Workflow) Name() string { return w.name }
+
+// Image returns the container image for K8s Job execution (empty = in-process).
+func (w *Workflow) Image() string { return w.image }
 
 // Steps returns the ordered step sequence.
 func (w *Workflow) Steps() []*StepBuilder { return w.steps }

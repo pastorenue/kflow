@@ -28,6 +28,7 @@ type protoGraphJSON struct {
 	Name   string           `json:"name"`
 	States []protoStateJSON `json:"states"`
 	Steps  []protoStepJSON  `json:"steps"`
+	Image  string           `json:"image,omitempty"`
 }
 
 type registerWorkflowRequestJSON struct {
@@ -79,6 +80,7 @@ func toRegisterJSON(wf *Workflow) registerWorkflowRequestJSON {
 			Name:   wf.Name(),
 			States: states,
 			Steps:  protoSteps,
+			Image:  wf.Image(),
 		},
 	}
 }

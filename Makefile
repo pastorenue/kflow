@@ -1,4 +1,4 @@
-.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build proto-gen proto-gen-python deps build-ui build-cli install-cli demo examples py-examples example-cp example-k8s-build example-k8s-load example-k8s-setup example-k8s-run example-k8s-clean
+.PHONY: build test test-race vet lint clean up down ui-install ui-build ui-check ui-dev helm-lint helm-template docker-build proto-gen proto-gen-python deps build-ui build-cli install-cli demo examples py-examples example-cp example-cp-k8s example-k8s-build example-k8s-load example-k8s-setup example-k8s-run example-k8s-portforward example-k8s-ui example-k8s-clean
 
 GO_IMAGE       := golang:1.22
 NODE_IMAGE     := node:22-alpine
@@ -33,6 +33,8 @@ up:
 ## down: stop all services
 down:
 	docker compose down
+
+restart: down up
 
 ## test-integration: run integration tests against live services
 test-integration:
@@ -139,6 +141,13 @@ example-cp:
 	  -e KFLOW_API_ENDPOINT=http://orchestrator:8080 \
 	  $(GO_IMAGE) go run ./examples/05-control-plane
 
+## example-cp-k8s: submit cp-order workflow to the k8s orchestrator (requires: make example-k8s-portforward)
+example-cp-k8s:
+	docker run --rm \
+	  -v "$(CURDIR)":/workspace -w /workspace \
+	  -e KFLOW_API_ENDPOINT=http://host.docker.internal:8081 \
+	  $(GO_IMAGE) go run ./examples/05-control-plane
+
 ## proto-gen-python: generate Python RunnerService stubs (flat output in sdk/python/kflow/proto/)
 proto-gen-python:
 	mkdir -p sdk/python/kflow/proto
@@ -150,32 +159,41 @@ proto-gen-python:
 	    runner.proto types.proto && \
 	  sed -i 's/^import runner_pb2/from . import runner_pb2/' sdk/python/kflow/proto/runner_pb2_grpc.py"
 
-## example-k8s-build: build orchestrator + Go example images
+## example-k8s-build: build orchestrator + Go example images directly in minikube's Docker daemon
 example-k8s-build:
-	docker build -t kflow:dev .
-	docker build -t kflow-example-k8s:dev -f examples/06-kubernetes/Dockerfile .
+	eval $$(minikube docker-env) && docker build -t kflow:dev .
+	eval $$(minikube docker-env) && docker build -t kflow-example-k8s:dev -f examples/06-kubernetes/Dockerfile .
 
-## example-k8s-load: load images into minikube
+## example-k8s-load: (no-op — images are built directly into minikube by example-k8s-build)
 example-k8s-load: example-k8s-build
-	minikube image load kflow:dev
-	minikube image load kflow-example-k8s:dev
 
 ## example-k8s-setup: deploy orchestrator stack to minikube
 example-k8s-setup: example-k8s-load
 	kubectl apply -f examples/06-kubernetes/k8s/
+	kubectl rollout restart deployment/kflow-orchestrator -n kflow
 	kubectl rollout status deployment/mongo -n kflow --timeout=60s
 	kubectl rollout status deployment/kflow-orchestrator -n kflow --timeout=90s
 
 ## example-k8s-run: submit workflow, stream logs
 example-k8s-run:
 	kubectl delete job kflow-example-runner -n kflow --ignore-not-found
-	kubectl apply -f examples/06-kubernetes/k8s/run-job.yaml
+	kubectl apply -f examples/06-kubernetes/run-job.yaml
 	kubectl wait --for=condition=complete job/kflow-example-runner -n kflow --timeout=120s
 	kubectl logs job/kflow-example-runner -n kflow
 
+## example-k8s-portforward: forward k8s orchestrator to localhost:8081 (avoids conflict with compose on :8080)
+example-k8s-portforward:
+	kubectl port-forward service/kflow-orchestrator 8081:8080 -n kflow
+
+## example-k8s-ui: open the dashboard against the k8s orchestrator (runs port-forward in background)
+example-k8s-ui:
+	kubectl port-forward service/kflow-orchestrator 8081:8080 -n kflow &
+	sleep 1
+	bin/kflow ui --server http://localhost:8081
+
 ## example-k8s-clean: tear down K8s example
 example-k8s-clean:
-	kubectl delete -f examples/06-kubernetes/k8s/run-job.yaml --ignore-not-found
+	kubectl delete -f examples/06-kubernetes/run-job.yaml --ignore-not-found
 	kubectl delete -f examples/06-kubernetes/k8s/ --ignore-not-found
 
 ## clean: remove build artefacts

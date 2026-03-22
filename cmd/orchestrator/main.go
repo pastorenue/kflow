@@ -259,12 +259,16 @@ func runServerMode() {
 			return
 		}
 
+		// Use the workflow's registered image for K8s Job execution.
+		// Empty image → pass-through in-process execution (no K8s Jobs).
+		image := graph.GetImage()
+
 		var runErr error
-		if k8s != nil {
+		if k8s != nil && image != "" {
 			ke := &engine.K8sExecutor{
 				Store:             ms,
 				K8s:               k8s,
-				Image:             cfg.Image,
+				Image:             image,
 				RunnerEndpoint:    cfg.RunnerGRPCEndpoint,
 				RunnerTokenSecret: cfg.RunnerTokenSecret,
 				Dispatcher:        disp,

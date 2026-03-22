@@ -22,3 +22,5 @@ spec:
           env:
             - name: KFLOW_SERVER
               value: "http://kflow-orchestrator.kflow.svc.cluster.local:8080"
+            - name: KFLOW_IMAGE
+              value: "kflow-example-k8s:dev"
