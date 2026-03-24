@@ -220,7 +220,7 @@ If the `kflow-macros` crate proves complex to implement, it is optional. The bui
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ServiceMode {
     Deployment = 0,
-    Lambda     = 1,
+    Job        = 1,
 }
 
 impl Default for ServiceMode {
@@ -231,6 +231,7 @@ pub struct ServiceDef {
     pub(crate) name: String,
     pub(crate) handler: Option<HandlerFn>,
     pub(crate) mode: ServiceMode,
+    pub(crate) image: Option<String>,     // required for Job mode; validated before registration
     pub(crate) port: u16,
     pub(crate) min_scale: u32,
     pub(crate) max_scale: u32,
@@ -242,6 +243,10 @@ impl ServiceDef {
     pub fn new(name: impl Into<String>) -> Self;
     pub fn handler(mut self, fn_: HandlerFn) -> Self;
     pub fn mode(mut self, mode: ServiceMode) -> Self;
+    /// Sets the container image for Job-mode services. Required when mode == Job.
+    /// Must be a fully-qualified image reference with an explicit tag or digest (never ":latest").
+    /// Ignored for Deployment mode.
+    pub fn image(mut self, image: impl Into<String>) -> Self;
     pub fn port(mut self, port: u16) -> Self;
     pub fn scale(mut self, min: u32, max: u32) -> Self;
     pub fn expose(mut self, host: impl Into<String>) -> Self;
@@ -288,7 +293,7 @@ pub fn run(wf: Workflow);
 /// 1. If --service=<name> matches svc.name:
 ///    - Deployment: start tonic gRPC server implementing ServiceRunnerService on svc.port;
 ///      route Invoke RPC to handler. (Replaces HTTP POST /invoke.)
-///    - Lambda: dial KFLOW_GRPC_ENDPOINT, call RunnerService::get_input(token),
+///    - Job: dial KFLOW_GRPC_ENDPOINT, call RunnerService::get_input(token),
 ///      run handler, call RunnerService::complete_state/fail_state, exit.
 /// 2. Otherwise → validate svc, POST definition to Control Plane, return.
 ///
@@ -433,7 +438,7 @@ kflow::run(wf)
   └─ --state=<name>    → dial KFLOW_GRPC_ENDPOINT, GetInput(token), run handler,
                           CompleteState/FailState via RunnerService, exit
   └─ --service=<name>  → Deployment: start tonic gRPC server (ServiceRunnerService)
-                         Lambda:     dial KFLOW_GRPC_ENDPOINT, GetInput(token),
+                         Job:        dial KFLOW_GRPC_ENDPOINT, GetInput(token),
                                      run handler, CompleteState/FailState, exit
   └─ (no flag)         → serialise workflow, POST to Control Plane, block
 ```

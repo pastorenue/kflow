@@ -168,9 +168,9 @@ const (
     // Scale min >= 1 is enforced.
     Deployment ServiceMode = iota
 
-    // Lambda creates a K8s Job per invocation; terminates after one request.
+    // Job creates a K8s Job per invocation; terminates after one request.
     // Scale and Port are ignored.
-    Lambda
+    Job
 )
 
 // ServiceDef is the definition of a standalone Service.
@@ -178,6 +178,7 @@ type ServiceDef struct {
     name        string
     fn          HandlerFunc
     mode        ServiceMode
+    image       string        // container image for Job-mode services (required when mode == Job)
     port        int
     minScale    int
     maxScale    int
@@ -194,12 +195,18 @@ func (s *ServiceDef) Handler(fn HandlerFunc) *ServiceDef
 // Mode sets the deployment mode (default: Deployment).
 func (s *ServiceDef) Mode(mode ServiceMode) *ServiceDef
 
+// Image sets the container image used when this service is invoked as a K8s Job.
+// Required when mode == Job. The image must already be pushed to a registry accessible
+// by the cluster. Never use ":latest"; always specify an explicit tag or digest.
+// Ignored for Deployment mode (Deployment-mode containers manage their own image via the Helm chart).
+func (s *ServiceDef) Image(image string) *ServiceDef
+
 // Port sets the listen port for Deployment-mode services (default: 8080).
-// Ignored for Lambda mode.
+// Ignored for Job mode.
 func (s *ServiceDef) Port(port int) *ServiceDef
 
 // Scale sets the min/max replica bounds for Deployment mode.
-// min must be >= 1. Ignored for Lambda mode.
+// min must be >= 1. Ignored for Job mode.
 func (s *ServiceDef) Scale(min, max int) *ServiceDef
 
 // Expose sets the Ingress hostname, creating a K8s Ingress resource.
@@ -223,7 +230,7 @@ func Run(wf *Workflow)
 // RunService registers and deploys the service with the Control Plane.
 // If the binary is invoked with --service=<name>, enters the service execution path:
 //   - Deployment mode: starts a gRPC server implementing ServiceRunnerService on the configured port.
-//   - Lambda mode: dials KFLOW_GRPC_ENDPOINT, calls RunnerService.GetInput(token), calls handler, reports output via RunnerService.CompleteState/FailState, exits.
+//   - Job mode: dials KFLOW_GRPC_ENDPOINT, calls RunnerService.GetInput(token), calls handler, reports output via RunnerService.CompleteState/FailState, exits.
 // Safe to call alongside Run in the same main().
 func RunService(svc *ServiceDef)
 
@@ -255,6 +262,9 @@ var (
 
     // ErrScaleMin is returned when a Deployment-mode service has min scale < 1.
     ErrScaleMin = errors.New("kflow: Deployment-mode service must have min scale >= 1")
+
+    // ErrMissingImage is returned when a Job-mode service has no image set.
+    ErrMissingImage = errors.New("kflow: Job-mode service must have an image set via Image()")
 )
 ```
 
@@ -269,6 +279,7 @@ var (
 3. **Handler ambiguity check (per task)**: Each `Task` must have exactly one of: inline `fn` or `InvokeService` target. Both is `ErrAmbiguousHandler`; neither is `ErrMissingHandler`.
 4. **Unknown state reference check**: Every `Next()` and `Catch()` target in all StepBuilders must resolve to either a registered state name, `Succeed`, or `Fail`.
 5. **Scale min check (per service)**: Every `ServiceDef` with `mode == Deployment` must have `minScale >= 1`.
+6. **Image required for Job-mode service**: Every `ServiceDef` with `mode == Job` must have a non-empty `image`. Returns `ErrMissingImage`.
 
 `Run()` and `RunService()` call `Validate()` internally before any network activity and panic or log-fatal on error.
 

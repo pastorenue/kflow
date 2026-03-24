@@ -16,7 +16,7 @@ Implement Kubernetes Job dispatch for workflow states. Replace the in-process `E
 
 **Dependency rule:** `internal/k8s/` must NOT import `internal/store/` or `internal/engine/`. Kubernetes resources are pure infrastructure; they know nothing of the domain model. `K8sExecutor` lives in `internal/engine/` (application layer) to wire K8s infrastructure into the execution use case.
 
-**gRPC runner path (replaces direct MongoDB access in Job containers):** Lambda Job containers no longer connect to MongoDB. They dial `KFLOW_GRPC_ENDPOINT` (port 9090, internal) and use `RunnerService` to obtain input and report output. See Phase 13 for the proto definition and token security. The Control Plane's `RunnerServiceServer` (`internal/runner/`) is the sole caller of `store.CompleteState`/`store.FailState` for K8s states.
+**gRPC runner path (replaces direct MongoDB access in Job containers):** K8s Job containers no longer connect to MongoDB. They dial `KFLOW_GRPC_ENDPOINT` (port 9090, internal) and use `RunnerService` to obtain input and report output. See Phase 13 for the proto definition and token security. The Control Plane's `RunnerServiceServer` (`internal/runner/`) is the sole caller of `store.CompleteState`/`store.FailState` for K8s states.
 
 ---
 

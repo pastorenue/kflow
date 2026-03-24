@@ -2,7 +2,7 @@
 
 ## Goal
 
-Define the canonical protobuf schema for all kflow inter-process communication. Replace direct MongoDB access from Lambda containers with a gRPC `RunnerService` running on the Control Plane. Replace HTTP POST service dispatch with gRPC `ServiceRunnerService`. Wire the grpc-gateway to serve all existing REST API routes. Introduce HMAC-SHA256 state tokens for container authentication.
+Define the canonical protobuf schema for all kflow inter-process communication. Replace direct MongoDB access from K8s Job containers with a gRPC `RunnerService` running on the Control Plane. Replace HTTP POST service dispatch with gRPC `ServiceRunnerService`. Wire the grpc-gateway to serve all existing REST API routes. Introduce HMAC-SHA256 state tokens for container authentication.
 
 ---
 
@@ -158,16 +158,17 @@ message StateRecord {
 
 message ServiceRecord {
   string                    name         = 1;
-  int32                     mode         = 2;  // 0=Deployment, 1=Lambda
-  int32                     port         = 3;
-  int32                     min_scale    = 4;
-  int32                     max_scale    = 5;
-  string                    ingress_host = 6;
-  int64                     timeout_ms   = 7;
-  ServiceStatus             status       = 8;
-  string                    cluster_ip   = 9;
-  google.protobuf.Timestamp created_at   = 10;
-  google.protobuf.Timestamp updated_at   = 11;
+  int32                     mode         = 2;  // 0=Deployment, 1=Job
+  string                    image        = 3;  // container image for Job-mode services; empty for Deployment mode
+  int32                     port         = 4;
+  int32                     min_scale    = 5;
+  int32                     max_scale    = 6;
+  string                    ingress_host = 7;
+  int64                     timeout_ms   = 8;
+  ServiceStatus             status       = 9;
+  string                    cluster_ip   = 10;
+  google.protobuf.Timestamp created_at   = 11;
+  google.protobuf.Timestamp updated_at   = 12;
 }
 
 message StateTransitionEvent {
@@ -197,7 +198,7 @@ option go_package = "github.com/your-org/kflow/internal/gen/kflow/v1;kflowv1";
 import "google/protobuf/struct.proto";
 
 // RunnerService is served on the Control Plane's internal port (:9090).
-// It is called by Lambda Job containers (Go, Python, Rust) to exchange
+// It is called by K8s Job containers (Go, Python, Rust) to exchange
 // input/output with the Control Plane without direct MongoDB access.
 // All RPCs require a valid KFLOW_STATE_TOKEN in gRPC metadata key "x-kflow-state-token".
 service RunnerService {

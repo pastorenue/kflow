@@ -63,7 +63,7 @@ export interface StateRecord {
 // Mirrors internal/store/service_store.go ServiceRecord
 export interface Service {
   name: string;
-  mode: 'Deployment' | 'Lambda';
+  mode: 'Deployment' | 'Job';
   port: number;
   min_scale: number;
   max_scale: number;
@@ -249,7 +249,7 @@ The WebSocket client is created once per SvelteKit layout (not per route). It is
 - Live updates: `WSEvent{ type: "service_update" }` updates the matching row in-place
 
 **What it shows:**
-- Table: service name, mode (Deployment/Lambda), status badge, replica count (Deployment only), last invocation time, endpoint URL (Ingress host if exposed)
+- Table: service name, mode (Deployment/Job), status badge, replica count (Deployment only), last invocation time, endpoint URL (Ingress host if exposed)
 - Clicking a row expands inline detail: timeout, scale bounds, cluster IP, full invocation history (link to `/logs?service_name=<name>`)
 - Status badge colours: Pending=grey, Running=green, Failed=red, Stopped=grey
 

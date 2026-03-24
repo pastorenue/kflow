@@ -81,7 +81,7 @@ TTL occurred_at + INTERVAL 90 DAY
 SETTINGS index_granularity = 8192;
 ```
 
-TTL: 90 days. `status_code` is the HTTP status code for Deployment-mode invocations; use `200` for successful Lambda invocations and `500` for failures.
+TTL: 90 days. `status_code` is the HTTP status code for Deployment-mode invocations; use `200` for successful Job invocations and `500` for failures.
 
 ### `logs`
 
@@ -188,7 +188,7 @@ func NewMetricsWriter(ch *Client) *MetricsWriter
 //   serviceName:  the registered service name
 //   invocationID: a unique ID for this invocation (e.g. execID + ":" + stateName)
 //   durationMs:   wall-clock duration of the invocation in milliseconds
-//   statusCode:   HTTP status code (Deployment) or 200/500 (Lambda)
+//   statusCode:   HTTP status code (Deployment) or 200/500 (Job)
 //   errMsg:       error message on failure, empty on success
 func (w *MetricsWriter) RecordServiceInvocation(
     ctx context.Context,

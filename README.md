@@ -1,8 +1,18 @@
 # kflow
 
-**Kubernetes-native serverless workflow engine — self-hosted AWS Step Functions + Lambda**
+**Open-source workflow orchestrator that chains Kubernetes services as a state machine**
 
-Define state-machine workflows using a Go SDK; kflow handles containerisation, scheduling, and lifecycle management on Kubernetes. Supports local in-process execution (no cluster required) and full K8s execution via a gRPC runner protocol.
+Define workflows in Go as a state machine; kflow schedules each state as a Kubernetes Job or Deployment, wires inputs and outputs between steps, and manages the full execution lifecycle. Runs on any Kubernetes cluster — no proprietary cloud DSL, no vendor dependency. Test any workflow or any subset of states locally with `RunLocal`, which executes the graph in-process using an in-memory store (no cluster required). Horizontally scalable: run multiple orchestrator replicas backed by MongoDB to handle 100x concurrent executions.
+
+**Key features:**
+- State machine workflows in Go — tasks, choices, waits, parallel fan-out, retries, catch blocks
+- Each state runs as a Kubernetes Job (ephemeral) or Deployment (persistent service), dispatched via gRPC
+- `RunLocal` executes the full graph or any subset in-process — mock individual states, start from a specific step, assert transition order — no cluster or Docker required
+- Write-ahead persistence: every state transition is recorded to MongoDB before execution begins
+- Horizontally scalable control plane: add replicas backed by MongoDB to handle 100x concurrent executions
+- Vendor-agnostic: runs on any CNCF-compatible Kubernetes cluster (kind, k3s, EKS, GKE, AKS, bare metal)
+- Pluggable telemetry via ClickHouse; observable via SvelteKit dashboard and WebSocket event stream
+- Go SDK, Python SDK, Rust SDK
 
 ---
 
@@ -129,9 +139,9 @@ make down
 | `KFLOW_API_KEY` | No | — | Bearer token for API auth (empty = dev mode) |
 | `KFLOW_CLICKHOUSE_DSN` | No | — | ClickHouse DSN (empty = telemetry disabled) |
 | `KFLOW_IMAGE` | No | — | Container image tag for K8s Job execution |
-| `KFLOW_STATE_TOKEN` | Yes (Lambda) | — | HMAC-SHA256 signed token injected into Job containers |
-| `KFLOW_EXECUTION_ID` | Yes (Lambda) | — | Execution UUID injected into Job containers (logging) |
-| `KFLOW_GRPC_ENDPOINT` | Yes (Lambda) | — | RunnerService address injected into Job containers |
+| `KFLOW_STATE_TOKEN` | Yes (Job) | — | HMAC-SHA256 signed token injected into Job containers |
+| `KFLOW_EXECUTION_ID` | Yes (Job) | — | Execution UUID injected into Job containers (logging) |
+| `KFLOW_GRPC_ENDPOINT` | Yes (Job) | — | RunnerService address injected into Job containers |
 
 ---
 

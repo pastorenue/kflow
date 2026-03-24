@@ -2,7 +2,7 @@
 
 ## Goal
 
-Implement the HTTP Control Plane API, the WebSocket hub for real-time events, the Service Registry and Dispatcher, and the Kubernetes resources for Service deployment (Deployments, K8s Services, Ingress). Implement the `--service=<name>` execution path for both Deployment and Lambda service modes. Add server-level name collision enforcement.
+Implement the HTTP Control Plane API, the WebSocket hub for real-time events, the Service Registry and Dispatcher, and the Kubernetes resources for Service deployment (Deployments, K8s Services, Ingress). Implement the `--service=<name>` execution path for both Deployment and Job service modes. Add server-level name collision enforcement.
 
 ---
 
@@ -205,6 +205,7 @@ const (
 type ServiceRecord struct {
     Name        string            // unique; shares namespace with state names
     Mode        kflow.ServiceMode
+    Image       string            // container image for Job-mode services; empty for Deployment mode (uses the binary's own image)
     Port        int
     MinScale    int
     MaxScale    int
@@ -268,14 +269,15 @@ type ServiceDispatcher struct {
 //      a. dial ServiceRecord.ClusterIP:KFLOW_SERVICE_GRPC_PORT
 //      b. ServiceRunnerServiceClient.Invoke(ctx, InvokeRequest{Input: <proto Struct>})
 //      c. Return InvokeResponse.Output (Executor writes to store via RunnerServiceServer)
-//   4. Lambda mode:
+//   4. Job mode:
 //      a. Generate KFLOW_STATE_TOKEN via internal/runner.GenerateStateToken
-//      b. CreateJob with args ["--service=" + serviceName] and env:
+//      b. image = ServiceRecord.Image (registered per-service image; never the global executor image)
+//      c. CreateJob with image=image, args ["--service=" + serviceName] and env:
 //            KFLOW_STATE_TOKEN, KFLOW_GRPC_ENDPOINT, KFLOW_EXECUTION_ID
 //         (KFLOW_INPUT is NOT injected)
-//      c. WaitForJob(ctx, jobName)
-//      d. store.GetStateOutput(ctx, execID, stateName) → return output
-//      e. DeleteJob (best-effort)
+//      d. WaitForJob(ctx, jobName)
+//      e. store.GetStateOutput(ctx, execID, stateName) → return output
+//      f. DeleteJob (best-effort)
 func (d *ServiceDispatcher) Dispatch(ctx context.Context, execID, stateName, serviceName string, input kflow.Input) (kflow.Output, error)
 ```
 
@@ -366,11 +368,11 @@ When the binary is invoked with `--service=<serviceName>`:
 5. Block indefinitely (Deployment serve loop)
 ```
 
-#### Lambda Mode
+#### Job Mode
 
 ```
 1. Parse --service=<name>, look up ServiceDef in the workflow/service registry
-2. Read mode from ServiceDef → Lambda
+2. Read mode from ServiceDef → Job
 3. Dial KFLOW_GRPC_ENDPOINT; call RunnerService.GetInput(token) → kflow.Input
 4. Apply ServiceDef.Timeout as execution deadline
 5. Call ServiceDef.HandlerFunc(ctx, input)
@@ -379,10 +381,10 @@ When the binary is invoked with `--service=<serviceName>`:
    (RunnerServiceServer performs the actual store.CompleteState / store.FailState)
 ```
 
-**Lambda Output Writer Clarification (gRPC path):**
-Lambda Job containers call `RunnerService.CompleteState`/`RunnerService.FailState` via gRPC. The Control Plane's `RunnerServiceServer` (`internal/runner/`) then writes to MongoDB. Lambda containers do NOT connect to MongoDB directly. The `K8sExecutor` reads output via `store.GetStateOutput(ctx, execID, stateName)` **after** `WaitForJob` returns — the read path is unchanged.
+**Job Output Writer Clarification (gRPC path):**
+K8s Job containers call `RunnerService.CompleteState`/`RunnerService.FailState` via gRPC. The Control Plane's `RunnerServiceServer` (`internal/runner/`) then writes to MongoDB. Job containers do NOT connect to MongoDB directly. The `K8sExecutor` reads output via `store.GetStateOutput(ctx, execID, stateName)` **after** `WaitForJob` returns — the read path is unchanged.
 
-Env vars for Lambda mode:
+Env vars for Job mode:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -422,10 +424,10 @@ The 409 response contract:
 
 1. `ServiceDispatcher.Dispatch` never calls `WriteAheadState` — the Executor always performs write-ahead before calling Dispatch.
 2. Deployment-mode dispatch uses the `ClusterIP` stored in `ServiceRecord.ClusterIP` — it never does DNS resolution at dispatch time.
-3. Lambda-mode dispatch follows the same Job naming convention as Task dispatch: `jobName(execID, stateName)`.
+3. Job-mode dispatch follows the same Job naming convention as Task dispatch: `jobName(execID, stateName)`.
 4. `CreateDeployment` creates both the K8s Deployment and the K8s Service atomically (best-effort: if K8s Service creation fails after Deployment success, the Control Plane must clean up the orphaned Deployment).
 5. `--service=<name>` is the **only** way a Deployment-mode binary enters its serve loop. `RunService` alone (without the flag) registers and submits the service definition to the Control Plane; it does not start an HTTP server.
-6. Service handlers must never write to the state store directly. Lambda-mode output is written by the container exit path, not the handler.
+6. Service handlers must never write to the state store directly. Job-mode output is written by the container exit path, not the handler.
 7. WebSocket broadcasts are best-effort. Missed events on disconnect do not affect execution correctness.
 8. The `WSHub` must not block on slow clients. Use non-blocking sends with a deadline; drop and unregister clients that can't keep up.
 9. `RunService` and `kflow.Run` are safe to call in the same `main()`. The flag dispatch in `cmd/orchestrator/main.go` selects exactly one execution path.
@@ -443,9 +445,9 @@ The 409 response contract:
 - [ ] `GET /api/v1/executions/:id/states` returns all `StateRecord`s for a completed execution.
 - [ ] `GET /api/v1/ws` upgrades to WebSocket; state transitions broadcast `WSEvent{Type: "state_transition"}`.
 - [ ] `ServiceDispatcher.Dispatch` in Deployment mode calls `ServiceRunnerService.Invoke` via gRPC to `<clusterIP>:<KFLOW_SERVICE_GRPC_PORT>`.
-- [ ] `ServiceDispatcher.Dispatch` in Lambda mode calls `CreateJob` with `--service=<name>` and `KFLOW_STATE_TOKEN`/`KFLOW_GRPC_ENDPOINT` env vars (NOT `KFLOW_INPUT` or `KFLOW_MONGO_URI`).
+- [ ] `ServiceDispatcher.Dispatch` in Job mode calls `CreateJob` with `--service=<name>` and `KFLOW_STATE_TOKEN`/`KFLOW_GRPC_ENDPOINT` env vars (NOT `KFLOW_INPUT` or `KFLOW_MONGO_URI`).
 - [ ] `--service=<name>` Deployment path: binary starts gRPC server implementing `ServiceRunnerService` on configured port.
-- [ ] `--service=<name>` Lambda path: binary calls `RunnerService.GetInput(token)`, runs handler, calls `RunnerService.CompleteState`/`FailState`, exits.
+- [ ] `--service=<name>` Job path: binary calls `RunnerService.GetInput(token)`, runs handler, calls `RunnerService.CompleteState`/`FailState`, exits.
 - [ ] `CreateDeployment` followed by `GetDeploymentClusterIP` returns a non-empty IP.
 - [ ] `DeleteDeployment` removes both the K8s Deployment and its K8s Service.
 - [ ] `CreateIngress` creates a K8s Ingress resource with the specified host.

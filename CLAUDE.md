@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**step-graph** is a Kubernetes-native serverless workflow engine written in Go. Users define state-machine workflows and persistent/on-demand services using a Go SDK; the engine handles containerisation, scheduling, and lifecycle management on Kubernetes. Think self-hosted AWS Step Functions + Lambda.
+**kflow** is an open-source workflow orchestrator written in Go that chains Kubernetes services as a state machine. Users define workflows and persistent/on-demand services using a Go SDK; the engine schedules each state as a Kubernetes Job or Deployment, wires inputs and outputs between steps, and manages execution lifecycle on any Kubernetes cluster — no proprietary cloud DSL, no vendor lock-in. Workflows can be tested fully or partially in-process using `RunLocal` and `MemoryStore` without a cluster. The control plane is horizontally scalable: run multiple orchestrator replicas backed by MongoDB to handle 100x concurrent executions.
 
-The repository is currently in the **architectural planning phase**. `AGENTS.md` is the authoritative design document. `docs/phases/` contains 13 phase reference files that drive the implementation roadmap. No source code exists yet.
+The repository is currently in the **architectural planning phase**. `AGENTS.md` is the authoritative design document. `docs/phases/` contains 14 phase reference files that drive the implementation roadmap. No source code exists yet.
 
 ---
 
@@ -96,7 +96,7 @@ SDK: kflow.Run(wf)
         3. Handler(ctx, stateName, input)    ← inline fn / K8s Job / Service dispatch
            ┌── RunLocal (in-process):
            │     HandlerFunc called directly; Executor calls store.CompleteState/FailState
-           ├── K8s Job (Lambda/Go):
+           ├── K8s Job (Go/Python/Rust):
            │     Container dials KFLOW_GRPC_ENDPOINT
            │     → RunnerService.GetInput(token)   → receives kflow.Input
            │     → HandlerFunc(ctx, input)
@@ -119,7 +119,7 @@ SDK: kflow.Run(wf)
 ### Key Data Flow Invariants
 
 1. **Write-ahead is never bypassed.** `WriteAheadState` → `MarkRunning` → handler → `CompleteState`/`FailState` — always in this order.
-2. **`RunnerServiceServer` is the sole caller of `store.CompleteState`/`store.FailState` for K8s-executed states.** Lambda and Service containers call `RunnerService.CompleteState`/`RunnerService.FailState` via gRPC; the `RunnerServiceServer` on the Control Plane performs the actual store writes. `RunLocal` (in-process) retains direct store calls via the `Executor`. MongoDB is never accessed directly by Lambda Job containers.
+2. **`RunnerServiceServer` is the sole caller of `store.CompleteState`/`store.FailState` for K8s-executed states.** K8s Job and Service containers call `RunnerService.CompleteState`/`RunnerService.FailState` via gRPC; the `RunnerServiceServer` on the Control Plane performs the actual store writes. `RunLocal` (in-process) retains direct store calls via the `Executor`. MongoDB is never accessed directly by K8s Job containers.
 3. **Service-to-service calls are forbidden in v1.** `ServiceDispatcher.Dispatch` is called only by the Executor.
 4. **WS and telemetry are independent.** `WSHub.Broadcast` is synchronous; `EventWriter` is async. No ordering guarantee between a WebSocket event arriving at a client and the ClickHouse row being committed.
 5. **ClickHouse is never read for control-flow.** MongoDB is the sole authority for execution state.
@@ -142,8 +142,8 @@ SDK: kflow.Run(wf)
 | `KFLOW_GRPC_TLS_CERT` | No | `""` | TLS cert file path for gRPC. Empty = no TLS (dev only). |
 | `KFLOW_GRPC_TLS_KEY` | No | `""` | TLS key file path for gRPC. |
 | `KFLOW_SERVICE_GRPC_PORT` | No | `9091` | Port that Deployment-mode Service pods expose for `ServiceRunnerService` |
-| `KFLOW_STATE_TOKEN` | Yes (Lambda) | — | HMAC-SHA256 signed token authorising this state execution; injected into Job containers |
-| `KFLOW_EXECUTION_ID` | Yes (Lambda) | — | Execution UUID injected into Lambda Job containers (logging/observability only) |
+| `KFLOW_STATE_TOKEN` | Yes (Job) | — | HMAC-SHA256 signed token authorising this state execution; injected into Job containers |
+| `KFLOW_EXECUTION_ID` | Yes (Job) | — | Execution UUID injected into K8s Job containers (logging/observability only) |
 
 ---
 
@@ -254,6 +254,7 @@ All design decisions are documented in `docs/phases/`. Read the relevant phase f
 | 11 | `phase-11-auth.md` | Bearer token auth, session tokens, `/healthz`+`/readyz` exemption |
 | 12 | `phase-12-graph-protocol.md` | Workflow graph JSON schema, large output handling, `ObjectStore` |
 | 13 | `phase-13-grpc-proto.md` | Proto schema definitions, buf toolchain, `RunnerService`, grpc-gateway setup, state token security |
+| 14 | `phase-14-testing-scalability.md` | Partial-flow test harness, mock states, 100x horizontal scalability |
 
 ---
 
@@ -277,13 +278,13 @@ Follow these rules when implementing any package in this project.
 
 - **Validate all user-supplied identifiers** (workflow names, state names, execution IDs) against an allowlist pattern (e.g., `^[a-zA-Z0-9_-]{1,128}$`) before using them in MongoDB queries, Kubernetes resource names, or log messages.
 - **Never interpolate user input into Kubernetes resource names or labels** without sanitization. Resource names that fail DNS subdomain rules must be rejected, not silently truncated.
-- **Validate `KFLOW_STATE_TOKEN` server-side before any store operation.** The token passed by Lambda Job containers must be verified using HMAC-SHA256 (`internal/runner/token.go`) before `RunnerServiceServer` processes any `CompleteState` or `FailState` call. Token expiry must be checked. Use `subtle.ConstantTimeCompare` for the signature comparison.
+- **Validate `KFLOW_STATE_TOKEN` server-side before any store operation.** The token passed by K8s Job containers must be verified using HMAC-SHA256 (`internal/runner/token.go`) before `RunnerServiceServer` processes any `CompleteState` or `FailState` call. Token expiry must be checked. Use `subtle.ConstantTimeCompare` for the signature comparison.
 
 ### Kubernetes Security
 
 - **Run containers as non-root.** All generated Job and Deployment specs must set `securityContext.runAsNonRoot: true` and `securityContext.runAsUser` to a non-zero UID.
 - **Drop all Linux capabilities.** Set `securityContext.capabilities.drop: ["ALL"]` on every container spec.
-- **Read-only root filesystem.** Set `securityContext.readOnlyRootFilesystem: true` for Lambda Job containers where possible.
+- **Read-only root filesystem.** Set `securityContext.readOnlyRootFilesystem: true` for K8s Job containers where possible.
 - **No `privileged: true`.** Never generate Kubernetes specs with privileged containers.
 - **Use least-privilege RBAC.** The Helm chart's `ClusterRole`/`Role` must grant only the specific verbs and resources the orchestrator needs (Jobs, Deployments, Services, Ingress). No wildcard (`*`) verbs or resources.
 - **Pin image tags.** Never use `:latest` in generated Job specs. Require callers to provide an explicit image tag.

@@ -119,13 +119,18 @@ from enum import IntEnum
 
 class ServiceMode(IntEnum):
     Deployment = 0
-    Lambda     = 1
+    Job        = 1
 
 class ServiceDef:
     def __init__(self, name: str) -> None: ...
 
     def handler(self, fn) -> "ServiceDef": ...
     def mode(self, mode: ServiceMode) -> "ServiceDef": ...
+    def image(self, image: str) -> "ServiceDef":
+        """Sets the container image for Job-mode services. Required when mode == Job.
+        Must be a fully-qualified image reference with an explicit tag or digest (never ':latest').
+        Ignored for Deployment mode.
+        """
     def port(self, port: int) -> "ServiceDef": ...
     def scale(self, min_: int, max_: int) -> "ServiceDef": ...
     def expose(self, host: str) -> "ServiceDef": ...
@@ -178,7 +183,7 @@ def run_service(svc: ServiceDef) -> None:
     1. If --service=<name> flag matches svc.name:
        - Deployment mode: start gRPC server implementing ServiceRunnerService on svc.port;
          route Invoke RPC to handler. (Replaces HTTP POST /invoke.)
-       - Lambda mode: dial KFLOW_GRPC_ENDPOINT; call RunnerService.GetInput(token),
+       - Job mode: dial KFLOW_GRPC_ENDPOINT; call RunnerService.GetInput(token),
          run handler, call RunnerService.CompleteState/FailState, exit.
     2. Otherwise → validate svc, POST service definition to Control Plane API, return.
 
@@ -329,7 +334,7 @@ async def fetch_data(input: Input) -> Output:
 
 ## Execution Model for Python Containers
 
-Python containers use the **container-per-language strategy** — not the shared binary strategy used by Go. Each Python task or Lambda service runs in its own container image that includes the Python interpreter and the user's code.
+Python containers use the **container-per-language strategy** — not the shared binary strategy used by Go. Each Python task or Job-mode service runs in its own container image that includes the Python interpreter and the user's code.
 
 ```
 Container image = Python interpreter + user code + kflow SDK + dependencies
