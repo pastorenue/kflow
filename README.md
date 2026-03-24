@@ -295,6 +295,15 @@ make clean              # remove build artifacts
 
 ---
 
+## CLI Commands
+Ensure you have the updated cli and build for your machine
+
+```bash
+make build-cli GOOS=darwin GOARCH=arm64 # For mac
+./bin/kflow ui <port>     # Run the dashboard ui on a given port
+./bin/kflow --help      # To see all commands and subcommands
+```
+
 ## Project Layout
 
 ```
